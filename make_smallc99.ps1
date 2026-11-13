@@ -154,7 +154,7 @@ $OVERLAYS = @(
     @{ Name="CC_CG99T";  Page=13; Descriptor="CC_CG99T.R99=13,6,setcodes:P_SETCODES" }
     @{ Name="CC_CL99";   Page=12; Descriptor="CC_CL99.R99=12,7,getoptions:P_GETOPTS,errrep:P_ERRREP" }
     @{ Name="CC_STRD";   Page=15; Descriptor="CC_STRD.R99=15,8,dostruct:T_STRUCT" }
-    @{ Name="CC_ENUM";   Page=1;  Descriptor="CC_ENUM.R99=1,8,doenum:-" }
+    @{ Name="CC_ENUM";   Page=1;  Descriptor="CC_ENUM.R99=1,8,doenum:-,typecore:T_TYPECORE,aliascore:T_ALIASCORE" }
 )
 
 # Overlay ownership contract.  Framed overlay dispatch saves/restores only
@@ -746,6 +746,18 @@ foreach ($overlay in $OVERLAYS) {
         throw "*** BUILD FAILED: LINK99 did not report page $($overlay.Page) for $($overlay.Name)"
     }
 }
+# Source-file I/O allocates runtime buffers from the remaining resident
+# memory. LINK99's chain and overlay checks do not enforce this heap limit.
+# 1700 bytes are documented for the three-file case; keep a margin.
+$MIN_RESIDENT_FREE = 2200
+if ($linkOutput -notmatch '(?im)Memory:\s*code\s+\d+\s+symbols\s+\d+\s+free\s+(\d+)\s+bytes') {
+    throw "*** BUILD FAILED: unable to read LINK99 resident free-memory figure"
+}
+$residentFree = [int]$Matches[1]
+Write-Output ("Resident free-memory check: {0} bytes (minimum {1})" -f $residentFree,$MIN_RESIDENT_FREE)
+if ($residentFree -lt $MIN_RESIDENT_FREE) {
+    throw "*** BUILD FAILED: insufficient resident runtime memory for SMALLC99 file buffers"
+}
 Require-File ".\SMALLC99.EXE"
 
 if (-not (Test-Path -LiteralPath $MONITOR_DIR -PathType Container)) {
@@ -759,6 +771,7 @@ $langTestDest = Join-Path $MONITOR_DIR "LANGTEST.C"
 $strTestDest = Join-Path $MONITOR_DIR "STRTEST.C"
 $ptrTestDest = Join-Path $MONITOR_DIR "PTRTEST.C"
 $arrTestDest = Join-Path $MONITOR_DIR "ARRTEST.C"
+$enumTestDest = Join-Path $MONITOR_DIR "ENUMTYPE.C"
 Copy-Item -LiteralPath ".\SMALLC99.EXE" -Destination $exeDest -Force
 Copy-Item -LiteralPath ".\M38B.C" -Destination $srcDest -Force
 Copy-Item -LiteralPath ".\TEST.C" -Destination $testDest -Force
@@ -767,6 +780,7 @@ Copy-Item -LiteralPath "..\tests\LANGTEST_LANGUAGE.C" -Destination $langTestDest
 Copy-Item -LiteralPath "..\tests\STRUCTTEST.C" -Destination $strTestDest -Force
 Copy-Item -LiteralPath "..\tests\PTRTEST.C" -Destination $ptrTestDest -Force
 Copy-Item -LiteralPath "..\tests\ARRTEST.C" -Destination $arrTestDest -Force
+Copy-Item -LiteralPath "..\tests\ENUMTYPE.C" -Destination $enumTestDest -Force
 if ((Get-FileHash ".\SMALLC99.EXE" -Algorithm SHA256).Hash -ne (Get-FileHash $exeDest -Algorithm SHA256).Hash) {
     throw "*** BUILD FAILED: deployed SMALLC99 hash mismatch"
 }
@@ -784,6 +798,10 @@ if ((Get-FileHash "..\tests\LANGTEST_LANGUAGE.C" -Algorithm SHA256).Hash -ne (Ge
 }
 
 # -------------------------------------------------------
+if ((Get-FileHash "..\tests\ENUMTYPE.C" -Algorithm SHA256).Hash -ne (Get-FileHash $enumTestDest -Algorithm SHA256).Hash) {
+    throw "*** BUILD FAILED: deployed ENUMTYPE.C hash mismatch"
+}
+
 # Release directory lock back to script root before exiting
 # -------------------------------------------------------
 Set-Location -LiteralPath $PSScriptRoot
@@ -804,6 +822,7 @@ Write-Output "Run minimal: SMALLC99 M38B M38B /V"
 Write-Output "Run word core: SMALLC99 TEST TEST /V"
 Write-Output "Run byte test: SMALLC99 M38D M38D /V"
 Write-Output "Expected output files: M38B.A99, TEST.A99 and M38D.A99"
+Write-Output "ENUMTYPE.C deployed to: $enumTestDest"
 
 # Explicitly terminate the dedicated PowerShell build host on success.
 exit 0

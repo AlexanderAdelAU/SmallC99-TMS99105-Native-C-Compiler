@@ -604,6 +604,58 @@ RSTR1:
 	MOV	*R2,*SP
 	RET
 
+;*******************************************************************
+;  typeintro - argument-preserving dispatch to OVL_STRD page 2.
+;*******************************************************************
+typeintro:
+	MOV	@TRSP,R2
+	CI	R2,TRSTKEND
+	JL	RTYP1
+	B	@TRPANIC
+RTYP1:
+	MOV	*SP+,*R2+
+	MOV	@CUR_WINA_ID,*R2+
+	MOV	R2,@TRSP
+	LI	R1,OVL_STRD
+	CALL	@OVLMGR
+	CALL	@T_TYPECORE
+	MOV	@TRSP,R2
+	DECT	R2
+	MOV	*R2,R1
+	DECT	R2
+	MOV	R2,@TRSP
+	CALL	@OVLMGR
+	MOV	@TRSP,R2
+	DECT	SP
+	MOV	*R2,*SP
+	RET
+
+;*******************************************************************
+;  aliasfix - argument-preserving dispatch to OVL_STRD page 2.
+;*******************************************************************
+aliasfix:
+	MOV	@TRSP,R2
+	CI	R2,TRSTKEND
+	JL	RALI1
+	B	@TRPANIC
+RALI1:
+	MOV	*SP+,*R2+
+	MOV	@CUR_WINA_ID,*R2+
+	MOV	R2,@TRSP
+	LI	R1,OVL_STRD
+	CALL	@OVLMGR
+	CALL	@T_ALIASCORE
+	MOV	@TRSP,R2
+	DECT	R2
+	MOV	*R2,R1
+	DECT	R2
+	MOV	R2,@TRSP
+	CALL	@OVLMGR
+	MOV	@TRSP,R2
+	DECT	SP
+	MOV	*R2,*SP
+	RET
+
 	ENT	STUBINIT
 	ENT	R_DODECL
 	ENT	R_DOFN
@@ -611,6 +663,8 @@ RSTR1:
 	ENT	R_STMT
 	ENT	R_TEST
 	ENT	R_STRUCT
+	ENT	typeintro
+	ENT	aliasfix
 	ENT	R_ERROR
 	ENT	R_EXPR
 	ENT	R_CEXPR

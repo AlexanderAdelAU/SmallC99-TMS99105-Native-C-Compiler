@@ -60,6 +60,8 @@
 #define ARRAY    2
 #define POINTER  3
 #define FUNCTION 4
+#define ENUMCONST 5
+#define TYPEDEFNAME 6
 
 /* ---- values for TYPE ---- */
 #define CHR      4
@@ -158,6 +160,31 @@ extern int opindex;
 extern int opsize;
 extern int *snext;
 /***************** lead-in functions *******************/
+
+/* Enum expression service moved from resident. CC_EXPR_A and CC_EXPR_D
+** are pages of the same mapped OVL_EXPR window, so this is a direct call.
+*/
+/*
+** Enum constants are immediate int values, not addressable objects.
+** The expression overlay is page-bound, so keep the small service
+** that handles ENUMCONST and TYPEDEFNAME symbols resident.
+*/
+typedprimary(ptr, is) char *ptr; int is[];
+{
+    if(ptr[IDENT] == TYPEDEFNAME) {
+        error("typedef name used as expression");
+        return 1;
+    }
+    if(ptr[IDENT] == 5) {      /* ENUMCONST */
+        is[TC] = INT;
+        is[CV] = getint(ptr + OFFSET, 2);
+        gen(GETw1n, is[CV]);
+        return 1;
+    }
+    return 0;
+}
+
+
 
 /*
 ** ==== Structures (phase 1): tag and member lookup ====
