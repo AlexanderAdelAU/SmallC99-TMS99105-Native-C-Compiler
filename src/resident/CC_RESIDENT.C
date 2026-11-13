@@ -24,6 +24,13 @@
 #define STATIC   2
 #define INT      8
 #define UINT     9
+#define CHR      4
+#define UCHR     5
+#define IDENT    0
+#define TYPE     1
+#define SIZE     3
+#define OFFSET   5
+#define TYPEDEFNAME 6
 
 /* ---- M30: needed by decl(), moved here from CC_DFUN ---- */
 #define BPW      2
@@ -68,6 +75,7 @@ char ssname[16];
 int monitor;
 
 extern char *line;
+extern char *lptr;
 extern int eof;
 extern int errflag;
 extern int nxtlab;
@@ -98,6 +106,7 @@ extern R_PREP();
 extern R_DEFINE();
 extern R_INCLUDE();
 extern R_DOASM();
+extern R_STRUCT();
 
 ccinit()
 {
@@ -233,6 +242,116 @@ decl(tp, aid, id, sz) int *tp, aid, *id, *sz;
 
     *tp = type;
     return n;
+}
+
+
+/*
+** Enum constants are immediate int values, not addressable objects.
+** The expression overlay is page-bound, so keep the small service
+** that handles ENUMCONST and TYPEDEFNAME symbols resident.
+*/
+typedprimary(ptr, is) char *ptr; int is[];
+{
+    if(ptr[IDENT] == TYPEDEFNAME) {
+        error("typedef name used as expression");
+        return 1;
+    }
+    if(ptr[IDENT] == 5) {      /* ENUMCONST */
+        is[TC] = INT;
+        is[CV] = getint(ptr + OFFSET, 2);
+        gen(GETw1n, is[CV]);
+        return 1;
+    }
+    return 0;
+}
+
+/*
+** A shared declaration type-specifier parser. Declaration overlays ask
+** for the base type and, for typedef names, the type's pre-existing
+** VARIABLE/POINTER/ARRAY shape. Does not create storage.
+**
+** The resident layer owns lookup, while R_STRUCT switches into STRD
+** for aggregate and enum specifiers. A failed identifier probe restores
+** the source cursor for the old K&R function parser.
+*/
+typeintro(tp, idp, sizep, local) int *tp, *idp, *sizep, local;
+{
+    char name[16];
+    char *save;
+    char *sym;
+    int t;
+
+    *idp = VARIABLE;
+    if(amatch("char", 4)) t = CHR;
+    else if(amatch("unsigned", 8)) {
+        if(amatch("char", 4)) t = UCHR;
+        else { amatch("int", 3); t = UINT; }
+    }
+    else if(amatch("int", 3)) t = INT;
+    else if(amatch("struct", 6)) t = R_STRUCT(0, local == 2 ? 0 : 1);
+    else if(amatch("union", 5)) t = R_STRUCT(1, local == 2 ? 0 : 1);
+    else if(amatch("enum", 4)) t = R_STRUCT(3, local == 1 ? 2 : 1);
+    else {
+        blanks();
+        if(alpha(ch) == 0) return 0;
+        save = lptr;
+        symname(name);
+        sym = 0;
+        if(local == 1) sym = findloc(name);
+        if(sym == 0) sym = findglb(name);
+        if(sym == 0 || sym[IDENT] != TYPEDEFNAME) {
+            bump(save - lptr);
+            return 0;
+        }
+        *tp = sym[TYPE];
+        *idp = getint(sym + OFFSET, 2);
+        *sizep = getint(sym + SIZE, 2);
+        return 1;
+    }
+    *tp = t;
+    *sizep = elsize(t);
+    return 1;
+}
+
+/*
+** Compose a declarator with a previously named typedef's shape.
+** A pointer alias adds one implicit pointer level. An existing array
+** alias can be named directly; forming an array OF that alias needs
+** richer declarator descriptors and is diagnosed for now.
+**
+** parameter: array typedefs used as parameter types decay to pointers.
+*/
+aliasfix(baseid, basesize, tp, idp, szp, parameter)
+  int baseid, basesize, *tp, *idp, *szp, parameter;
+{
+    int n;
+    if(baseid == POINTER) {
+        if(*idp == VARIABLE) {
+            *idp = POINTER;
+            *szp = BPW;
+        }
+        else if(*idp == POINTER) {
+            *tp += 64;
+            *szp = BPW;
+        }
+        else if(*idp == ARRAY) {
+            n = *szp / elsize(*tp);
+            *tp += 64;
+            *szp = n * BPW;
+        }
+    }
+    else if(baseid == ARRAY) {
+        if(*idp != VARIABLE) error("unsupported array typedef composition");
+        else if(parameter) {
+            *idp = POINTER;
+            *szp = BPW;
+        }
+        else {
+            *idp = ARRAY;
+            *szp = basesize;
+        }
+    }
+    if(*tp > 255) error("too many pointer levels");
 }
 
 kill()

@@ -60,6 +60,8 @@
 #define ARRAY    2
 #define POINTER  3
 #define FUNCTION 4
+#define ENUMCONST 5
+#define TYPEDEFNAME 6
 
 /* ---- values for TYPE ---- */
 #define CHR      4
@@ -172,6 +174,7 @@ primary(is)  int *is; {
         experr();
         return 0;
         }
+      if(typedprimary(ptr, is)) return 0;
       k = getint(ptr+OFFSET, 2);
       if(ptr[IDENT] == VARIABLE && elsize(ptr[TYPE]) == 1)
         ++k;                /* TMS: a scalar char lives in the LSB */
@@ -192,6 +195,7 @@ primary(is)  int *is; {
       return 1;
       }
     if(ptr = findglb(sname)) {      /* is global */
+      if(typedprimary(ptr, is)) return 0;
       is[ST] = ptr;
       if(ptr[IDENT] != FUNCTION) {
         if(ptr[IDENT] == ARRAY) {

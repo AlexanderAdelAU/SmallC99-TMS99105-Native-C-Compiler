@@ -24,6 +24,7 @@
 	#define ARRAY     2
 	#define POINTER   3
 	#define FUNCTION  4
+	#define ENUMCONST 5
 	#define CHR       4
 	#define INT       8
 	#define UCHR      5
@@ -41,6 +42,8 @@
 	#define NAMESIZE  16
 
 	extern int eof;
+	extern int ch;
+	extern char *glbptr, *locptr;
 
 	/*
 	** ==== Structures (phase 1) ====
@@ -79,6 +82,7 @@
 	  int tag;
 	  char tname[NAMESIZE];
 	  if(isunion == 2) return mdrows(outer);   /* [a][b]... after the first */
+	  if(isunion == 3) return doenum(outer); /* enum tag/definition */
 	  if(symname(tname) == 0) {
 	    error("need struct tag");
 	    return INT;
@@ -92,12 +96,20 @@
 	    tag = ntags;
 	    }
 	  --tag;
+	  if((tagtab[tag * TAGSIZ + TAGCNT] & 255) == 255) {
+	    error("enum tag used as struct");
+	    return INT;
+	    }
 	  if(match("{")) {
 	    if(outer) dobody(tag, isunion);
 	    else error("define struct outside");
 	    }
 	  return ((tag << 2) | STRUCTBIT);
 	  }
+
+
+
+	/* doenum() is in CC_ENUM.C, page 2 of this same overlay. */
 
 	dfindtag(sname) char *sname; {   /* tag index + 1, or 0 */
 	  int i;
@@ -126,7 +138,7 @@
 	*/
 	dobody(tag, isunion) int tag, isunion; {
 	  char *t, *m, mname[NAMESIZE];
-	  int mtype, mt, id, dim, msize, off, big;
+	  int mtype, mt, id, dim, msize, off, big, baseid, basesz;
 	  t = tagtab + tag * TAGSIZ;
 	  if(t[TAGCNT]) error("struct redefined");
 	  t[TAGFIRST] = nmembs;
@@ -134,18 +146,7 @@
 	  off = big = 0;
 	  while(match("}") == 0) {
 	    if(eof) return;
-	    if(amatch("char", 4)) mtype = CHR;
-	    else if(amatch("unsigned", 8)) {
-	      if(amatch("char", 4)) mtype = UCHR;
-	      else {
-	        amatch("int", 3);
-	        mtype = UINT;
-	        }
-	      }
-	    else if(amatch("int", 3)) mtype = INT;
-	    else if(amatch("struct", 6)) mtype = dostruct(0, 0);
-	    else if(amatch("union", 5)) mtype = dostruct(1, 0);
-	    else {
+	    if(typeintro(&mtype, &baseid, &basesz, 2) == 0) {
 	      error("need member type");
 	      kill();
 	      continue;
@@ -171,6 +172,7 @@
 	        msize = dim * elsize(mt);
 	        if(msize == 0) error("incomplete struct");
 	        }
+	      aliasfix(baseid, basesz, &mt, &id, &msize, 0);
 	      if((id == POINTER || elsize(mt) != 1) && (off & 1))
 	        ++off;                      /* words at even offsets */
 	      if(nmembs >= NUMMEMB) {
