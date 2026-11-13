@@ -1,0 +1,17 @@
+# Generated compiler build output.
+# make_smallc99.ps1 recreates this directory from the tracked inputs
+# in src/, include/, lib/, tests/, and toolchain/.
+/build_tms/
+
+# Eclipse metadata created by importing this checkout as a General Project.
+# Keep the Eclipse project pointed at the Git working tree.
+/.project
+/.cproject
+/.classpath
+/.settings/
+/.externalToolBuilders/
+
+# Temporary editor backup and swap files.
+*~
+*.swp
+*.swo
