@@ -210,6 +210,30 @@ does, so `m[i][j]` is two ordinary subscripts and `m[i]` can be passed as an
 
 ## Building
 
+### Two toolchains
+
+SMALLC99 is built on Windows with the **cross toolchain**, then runs on the
+SBC with the **native toolchain**. The tools share names, so it matters which
+one you are using:
+
+```
+Stage 1 – on Windows, with the cross toolchain (toolchain/ in this repo)
+  smallcp.exe ─► r99.exe ─► link99.exe
+       │
+       ▼  builds
+  SMALLC99.EXE   (and R99.COM, LINK99.EXE, FILEEDIT.EXE)
+
+Stage 2 – on the SBC4, with the native toolchain
+  FILEEDIT ─► SMALLC99 ─► R99 ─► LINK99 ─► your program
+  (no PC needed from here on)
+```
+
+The native assembler, linker and editor, and ready-built copies of all four
+SBC programs including `SMALLC99.EXE`, are in
+**[TMS99105-Native-Toolchain](https://github.com/AlexanderAdelAU/TMS99105-Native-Toolchain)**.
+If you only want to compile on the SBC, copy its `bin/` folder and
+`lib/IOLIB99.LIB` from this repo to the board and skip the build below.
+
 ### Host toolchain (`toolchain/`)
 
 | Tool | Role |
