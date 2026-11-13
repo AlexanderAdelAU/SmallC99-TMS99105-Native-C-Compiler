@@ -75,6 +75,7 @@ char ssname[16];
 int monitor;
 
 extern char *line;
+extern char *lptr;
 extern int eof;
 extern int errflag;
 extern int nxtlab;
@@ -245,6 +246,26 @@ decl(tp, aid, id, sz) int *tp, aid, *id, *sz;
 
 
 /*
+** Enum constants are immediate int values, not addressable objects.
+** The expression overlay is page-bound, so keep the small service
+** that handles ENUMCONST and TYPEDEFNAME symbols resident.
+*/
+typedprimary(ptr, is) char *ptr; int is[];
+{
+    if(ptr[IDENT] == TYPEDEFNAME) {
+        error("typedef name used as expression");
+        return 1;
+    }
+    if(ptr[IDENT] == 5) {      /* ENUMCONST */
+        is[TC] = INT;
+        is[CV] = getint(ptr + OFFSET, 2);
+        gen(GETw1n, is[CV]);
+        return 1;
+    }
+    return 0;
+}
+
+/*
 ** A shared declaration type-specifier parser. Declaration overlays ask
 ** for the base type and, for typedef names, the type's pre-existing
 ** VARIABLE/POINTER/ARRAY shape. Does not create storage.
@@ -267,16 +288,16 @@ typeintro(tp, idp, sizep, local) int *tp, *idp, *sizep, local;
         else { amatch("int", 3); t = UINT; }
     }
     else if(amatch("int", 3)) t = INT;
-    else if(amatch("struct", 6)) t = R_STRUCT(0, 1);
-    else if(amatch("union", 5)) t = R_STRUCT(1, 1);
-    else if(amatch("enum", 4)) t = R_STRUCT(3, local ? 2 : 1);
+    else if(amatch("struct", 6)) t = R_STRUCT(0, local == 2 ? 0 : 1);
+    else if(amatch("union", 5)) t = R_STRUCT(1, local == 2 ? 0 : 1);
+    else if(amatch("enum", 4)) t = R_STRUCT(3, local == 1 ? 2 : 1);
     else {
         blanks();
         if(alpha(ch) == 0) return 0;
         save = lptr;
         symname(name);
         sym = 0;
-        if(local) sym = findloc(name);
+        if(local == 1) sym = findloc(name);
         if(sym == 0) sym = findglb(name);
         if(sym == 0 || sym[IDENT] != TYPEDEFNAME) {
             bump(save - lptr);
