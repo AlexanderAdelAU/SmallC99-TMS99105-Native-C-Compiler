@@ -746,17 +746,25 @@ foreach ($overlay in $OVERLAYS) {
         throw "*** BUILD FAILED: LINK99 did not report page $($overlay.Page) for $($overlay.Name)"
     }
 }
-# Source-file I/O allocates runtime buffers from the remaining resident
-# memory. LINK99's chain and overlay checks do not enforce this heap limit.
-# 1700 bytes are documented for the three-file case; keep a margin.
-$MIN_RESIDENT_FREE = 2200
-if ($linkOutput -notmatch '(?im)Memory:\s*code\s+\d+\s+symbols\s+\d+\s+free\s+(\d+)\s+bytes') {
-    throw "*** BUILD FAILED: unable to read LINK99 resident free-memory figure"
+# LINK99 "Memory: free" is NOT resident heap: it counts overlay pages.
+# Instead, the last explicitly linked resident object is CC_STRU.R99.
+# LINK99 prints its start address and size; no resident module follows it.
+# The space from the end of that module to >8000 is the resident heap
+# ceiling (subject to runtime/stack use). Keep at least 1800 bytes here;
+# CC_DATA documents ~1700 for three simultaneously open file buffers.
+$MIN_RESIDENT_GAP = 1800
+$residentPattern = '(?im)^\s*([0-9A-F]+)\s+Code Bytes at\s+[0-9A-F]+\x27\s+([0-9A-F]+)\s+CC_STRU\s*$'
+$matchResident = [regex]::Match($linkOutput, $residentPattern)
+if (-not $matchResident.Success) {
+    throw "*** BUILD FAILED: LINK99 resident end address unavailable (CC_STRU)"
 }
-$residentFree = [int]$Matches[1]
-Write-Output ("Resident free-memory check: {0} bytes (minimum {1})" -f $residentFree,$MIN_RESIDENT_FREE)
-if ($residentFree -lt $MIN_RESIDENT_FREE) {
-    throw "*** BUILD FAILED: insufficient resident runtime memory for SMALLC99 file buffers"
+$lastSize = [Convert]::ToInt32($matchResident.Groups[1].Value, 16)
+$lastStart = [Convert]::ToInt32($matchResident.Groups[2].Value, 16)
+$residentEnd = $lastStart + $lastSize
+$residentGap = 0x8000 - $residentEnd
+Write-Output ("Resident end: >{0:X4}; gap to >8000: {1} bytes (minimum {2})" -f $residentEnd,$residentGap,$MIN_RESIDENT_GAP)
+if ($lastStart -lt 0x1000 -or $residentGap -lt $MIN_RESIDENT_GAP) {
+    throw "*** BUILD FAILED: insufficient resident address space for SMALLC99 runtime I/O"
 }
 Require-File ".\SMALLC99.EXE"
 
