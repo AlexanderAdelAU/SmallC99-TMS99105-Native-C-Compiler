@@ -1,4 +1,4 @@
-;* * *  Small-C/Plus Version 1.06g for the TMS 9900 - Cameron * * *
+;* * *  Small-C/Plus Version 1.06a for the TMS 9900 - Cameron * * *
 ;       Cain, Van Zandt, Hendrix, Yorston, Cameron
 ;          Original Z80  Version 21st April 1990       
 ;
@@ -7,9 +7,6 @@ R1	EQU 1
 R2	EQU 2
 R3	EQU 3
 R4	EQU 4
-R5	EQU 5
-R6	EQU 6
-R7	EQU 7
 R8	EQU 8
 SL	EQU 9
 R9	EQU 9
@@ -55,7 +52,7 @@ R11	EQU 11
 ;#define POINTER  3
 ;#define SYMAVG  12
 ;#define NUMLOCS 25
-;#define SYMTBSZ 3520
+;#define SYMTBSZ 3500
 ;#define LITMAX  255
 ;#define WQTABSZ 30
 ;#define WQSIZ    3
@@ -91,8 +88,9 @@ wqptr:	BSS 2
 ;extern char *cptr;
 ;extern char *cptr2;
 ;extern char *cptr3;
-;char ssname[16];
-ssname:	BSS 16
+;char ssname[9];
+ssname:	BSS 9
+	EVEN
 ;int monitor;
 monitor:	BSS 2
 ;extern char *line;
@@ -103,7 +101,7 @@ monitor:	BSS 2
 ;extern int declared;
 ;extern int ncmp;
 ;extern int swactive;
-;extern int stmtovlinit;
+;extern int swdefault;
 ;extern int ccode;
 ;extern int pptr;
 ;extern int macptr;
@@ -111,6 +109,9 @@ monitor:	BSS 2
 ;extern int skiplevel;
 ;extern int incunit;
 ;extern int oldseg;
+;extern int *swnext;
+;extern int *swend;
+;extern int swstab[];
 ;extern int ch;
 ;extern int nch;
 ;/* Resident assembly entry points exported by OVLSTUBS.A99. */
@@ -134,6 +135,7 @@ ccinit:
 ;    i = 0;
 ;modstk(newsp,save)
 	DECT SP
+;const1(val)
 	CLR R4
 ;puttos()
 	MOV R4,*SP
@@ -141,8 +143,9 @@ ccinit:
 cc2:
 ;getloc(sym, off)
 	MOV *SP,R4 ;optimised load
+;zpush()
 	MOV R4,R3 ;optimised push/pop
-	LI R4,3520
+	LI R4,3500
 ;_cclt
 	C R3,R4 ;optimised
 	JLT $+6
@@ -150,25 +153,31 @@ cc2:
 ;        symtab[i++] = 0;
 ;address(ptr)
 	LI R4,symtab
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;getloc(sym, off)
 	LI R4,2
 	A SP,R4
-	MOV R4,R5 ;optimised expr save
+;zpush()
+	DECT SP
+	MOV R4,*SP
 ;indirect ccgint
 	MOV *R4,R4
 ;inc()
 	INC R4
-	MOV R5,R3 ;optimised expr restore
+;zpop()
+	MOV *SP+,R3
 ;putstk - int
 	MOV R4,*R3
 ;	dec()
 	DEC R4
 ;scale(type,tag)
+;zpop()
 	MOV *SP+,R3
 ;	zadd()
 	A R3,R4
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	CLR R4
 ;putstk - char
@@ -191,46 +200,57 @@ cc3:
 ;putmem(sym)
 	MOV R4,@glbptr
 ;    cptr  = 0;
+;const1(val)
 	CLR R4
 ;putmem(sym)
 	MOV R4,@cptr
 ;    cptr2 = 0;
+;const1(val)
 	CLR R4
 ;putmem(sym)
 	MOV R4,@cptr2
 ;    cptr3 = 0;
+;const1(val)
 	CLR R4
 ;putmem(sym)
 	MOV R4,@cptr3
 ;    argstk = 0;
+;const1(val)
 	CLR R4
 ;putmem(sym)
 	MOV R4,@argstk
 ;    argtop = 0;
+;const1(val)
 	CLR R4
 ;putmem(sym)
 	MOV R4,@argtop
 ;    csp = 0;
+;const1(val)
 	CLR R4
 ;putmem(sym)
 	MOV R4,@csp
 ;    lastst = 0;
+;const1(val)
 	CLR R4
 ;putmem(sym)
 	MOV R4,@lastst
 ;    litlab = 0;
+;const1(val)
 	CLR R4
 ;putmem(sym)
 	MOV R4,@litlab
 ;    litptr = 0;
+;const1(val)
 	CLR R4
 ;putmem(sym)
 	MOV R4,@litptr
 ;    nogo = 0;
+;const1(val)
 	CLR R4
 ;putmem(sym)
 	MOV R4,@nogo
 ;    noloc = 0;
+;const1(val)
 	CLR R4
 ;putmem(sym)
 	MOV R4,@noloc
@@ -240,64 +260,96 @@ cc3:
 ;putmem(sym)
 	MOV R4,@wqptr
 ;    errflag = 0;
+;const1(val)
 	CLR R4
 ;putmem(sym)
 	MOV R4,@errflag
 ;    nxtlab = 0;
+;const1(val)
 	CLR R4
 ;putmem(sym)
 	MOV R4,@nxtlab
 ;    /* M30: block-local machinery. declared MUST be -1 here. */
 ;    declared = -1;
+;const1(val)
 	SETO R4
 ;putmem(sym)
 	MOV R4,@declared
 ;    ncmp = 0;
+;const1(val)
 	CLR R4
 ;putmem(sym)
 	MOV R4,@ncmp
 ;    swactive = 0;
+;const1(val)
 	CLR R4
 ;putmem(sym)
 	MOV R4,@swactive
-;    stmtovlinit = 0;
+;    /* M32: switch table. swend is the CORRECTED bound -- the last
+;    ** valid (label,value) pair start = swstab + 178. See CC_DATA
+;    ** for why baseline's SWTABSZ-SWSIZ expression is a bound bug. */
+;    swdefault = 0;
+;const1(val)
 	CLR R4
 ;putmem(sym)
-	MOV R4,@stmtovlinit
+	MOV R4,@swdefault
+;    swnext = swstab;
+;address(ptr)
+	LI R4,swstab
+;putmem(sym)
+	MOV R4,@swnext
+;    swend = swstab + 178;
+;address(ptr)
+	LI R4,swstab
+;const2(val)
+	LI R3,356
+;	zadd()
+	A R3,R4
+;putmem(sym)
+	MOV R4,@swend
 ;    /* M33: preprocessor state. ccode YES = parsing C, not #asm. */
 ;    ccode = 1;
+;const1(val)
 	LI R4,1
 ;putmem(sym)
 	MOV R4,@ccode
 ;    pptr = 0;
+;const1(val)
 	CLR R4
 ;putmem(sym)
 	MOV R4,@pptr
 ;    macptr = 0;
+;const1(val)
 	CLR R4
 ;putmem(sym)
 	MOV R4,@macptr
 ;    iflevel = 0;
+;const1(val)
 	CLR R4
 ;putmem(sym)
 	MOV R4,@iflevel
 ;    skiplevel = 0;
+;const1(val)
 	CLR R4
 ;putmem(sym)
 	MOV R4,@skiplevel
 ;    incunit = 0;
+;const1(val)
 	CLR R4
 ;putmem(sym)
 	MOV R4,@incunit
 ;    oldseg = 0;
+;const1(val)
 	CLR R4
 ;putmem(sym)
 	MOV R4,@oldseg
 ;    usexpr = 1;
+;const1(val)
 	LI R4,1
 ;putmem(sym)
 	MOV R4,@usexpr
 ;    monitor = 0;
+;const1(val)
 	CLR R4
 ;putmem(sym)
 	MOV R4,@monitor
@@ -328,6 +380,7 @@ needsub:
 	DECT SP
 ;constant(lval)
 	LI R4,cc5+0
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
@@ -337,6 +390,7 @@ needsub:
 	MOV R4,R4
 	JNE $+6
 	B @cc6
+;const1(val)
 	CLR R4
 ;modstk(newsp,save)
 	INCT SP
@@ -345,16 +399,19 @@ needsub:
 cc6:
 ;getloc(sym, off)
 	MOV SP,R4
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
 	CALL @R_CEXPR
 ;modstk(newsp,save)
 	INCT SP
+;eq0(label)
 	MOV R4,R4
 	JEQ $+6
 	B @cc7
 ;        val = 1;
+;const1(val)
 	LI R4,1
 ;puttos()
 	MOV R4,*SP
@@ -370,6 +427,7 @@ cc7:
 ;modstk(newsp,save)
 ;constant(lval)
 	LI R4,cc5+2
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
@@ -389,6 +447,7 @@ cc7:
 cc8:
 ;constant(lval)
 	LI R4,cc5+24
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
@@ -419,23 +478,17 @@ cc5:	BYTE 93,0,110,101,103,97,116,105,118,101,32,115
 ;** inside the statement overlay's -- the deepest TRSTACK path M30
 ;** exercises.
 ;*/
-;decl(tp, aid, id, sz) int *tp, aid, *id, *sz;
+;decl(type, aid, id, sz) int type, aid, *id, *sz;
 	EVEN
 decl:
 ;{
-;    int n, p, type;
-;    type = *tp;             /* the caller's per-declarator copy */
-;modstk(newsp,save)
-	AI SP,-6
-;getloc(sym, off)
-	MOV @14(SP),R4 ;optimised load
-;indirect ccgint
-	MOV *R4,R4
-;puttos()
-	MOV R4,*SP
+;    int n, p;
 ;    if(match("("))
+;modstk(newsp,save)
+	AI SP,-4
 ;constant(lval)
 	LI R4,cc9+0
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
@@ -446,21 +499,24 @@ decl:
 	JNE $+6
 	B @cc10
 ;        p = 1;
+;const1(val)
 	LI R4,1
-;put2tos()
-	MOV R4,@2(SP)
+;puttos()
+	MOV R4,*SP
 ;    else
 ;jump(label)
 	B @cc11
 cc10:
 ;        p = 0;
+;const1(val)
 	CLR R4
-;put2tos()
-	MOV R4,@2(SP)
+;puttos()
+	MOV R4,*SP
 cc11:
 ;    if(match("*")) {
 ;constant(lval)
 	LI R4,cc9+2
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
@@ -473,108 +529,84 @@ cc11:
 ;        *id = POINTER;
 ;modstk(newsp,save)
 ;getloc(sym, off)
-	MOV @10(SP),R4 ;optimised load
+	MOV @8(SP),R4 ;optimised load
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	LI R4,3
 ;putstk - int
 	MOV R4,*R3
 ;        *sz = BPW;
 ;getloc(sym, off)
-	MOV @8(SP),R4 ;optimised load
+	MOV @6(SP),R4 ;optimised load
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	LI R4,2
 ;putstk - int
 	MOV R4,*R3
-;        while(match("*")) type = type + 64;     /* depth, bits 6-7 */
-cc13:
-;constant(lval)
-	LI R4,cc9+4
-	DECT SP
-	MOV R4,*SP
-;zcall()
-	CALL @match
-;modstk(newsp,save)
-	INCT SP
-	MOV R4,R4
-	JNE $+6
-	B @cc14
-;getloc(sym, off)
-	MOV *SP,R4 ;optimised load
-;const2(val)
-	LI R3,64
-;	zadd()
-	A R3,R4
-;puttos()
-	MOV R4,*SP
-;jump(label)
-	B @cc13
-cc14:
 ;    }
 ;modstk(newsp,save)
 ;    else {
 ;jump(label)
-	B @cc15
+	B @cc13
 cc12:
 ;        *id = VARIABLE;
 ;modstk(newsp,save)
 ;getloc(sym, off)
-	MOV @10(SP),R4 ;optimised load
+	MOV @8(SP),R4 ;optimised load
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	LI R4,1
 ;putstk - int
 	MOV R4,*R3
-;        *sz = elsize(type);     /* struct-aware: CC_STRU */
+;        *sz = type >> 2;
 ;getloc(sym, off)
-	MOV @8(SP),R4 ;optimised load
+	MOV @6(SP),R4 ;optimised load
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;getloc(sym, off)
-	MOV @2(SP),R4 ;optimised load
-	DECT SP
-	MOV R4,*SP
-;zcall()
-	CALL @elsize
-;modstk(newsp,save)
-	INCT SP
+	MOV @14(SP),R4 ;optimised load
+;zpush()
+	MOV R4,R3 ;optimised push/pop
+	LI R4,2
+	BL @_ccasr##
+;zpop()
 	MOV *SP+,R3
 ;putstk - int
 	MOV R4,*R3
 ;    }
 ;modstk(newsp,save)
-cc15:
+cc13:
 ;    if((n = symname(ssname)) == 0)
-;getloc(sym, off)
-	LI R4,4
-	A SP,R4
-	DECT SP
-	MOV R4,*SP
 ;address(ptr)
 	LI R4,ssname
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
 	CALL @symname
 ;modstk(newsp,save)
 	INCT SP
-	MOV *SP+,R3
-;putstk - int
-	MOV R4,*R3
+;put2tos()
+	MOV R4,@2(SP)
+;eq0(label)
 	MOV R4,R4
 	JEQ $+6
-	B @cc16
+	B @cc14
 ;        illname();
 ;zcall()
 	CALL @illname
 ;modstk(newsp,save)
 ;    if(p && match(")"))
-cc16:
+cc14:
 ;getloc(sym, off)
-	MOV @2(SP),R4 ;optimised load
+	MOV *SP,R4 ;optimised load
 	MOV R4,R4
 	JNE $+6
-	B @cc18
+	B @cc16
 ;constant(lval)
-	LI R4,cc9+6
+	LI R4,cc9+4
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
@@ -583,21 +615,24 @@ cc16:
 	INCT SP
 	MOV R4,R4
 	JNE $+6
-	B @cc18
+	B @cc16
+;const1(val)
 	LI R4,1
 ;jump(label)
-	B @cc19
-cc18:
+	B @cc17
+cc16:
+;const1(val)
 	CLR R4
-cc19:
+cc17:
 	MOV R4,R4
 	JNE $+6
-	B @cc17
+	B @cc15
 ;        ;
 ;    if(match("(")) {
-cc17:
+cc15:
 ;constant(lval)
-	LI R4,cc9+8
+	LI R4,cc9+6
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
@@ -606,38 +641,44 @@ cc17:
 	INCT SP
 	MOV R4,R4
 	JNE $+6
-	B @cc20
+	B @cc18
 ;        if(!p || *id != POINTER)
 ;modstk(newsp,save)
 ;getloc(sym, off)
-	MOV @2(SP),R4 ;optimised load
+	MOV *SP,R4 ;optimised load
 	BL @_cclneg##
+;eq0(label)
 	MOV R4,R4
 	JEQ $+6
-	B @cc22
+	B @cc20
 ;getloc(sym, off)
-	MOV @10(SP),R4 ;optimised load
+	MOV @8(SP),R4 ;optimised load
 ;indirect ccgint
 	MOV *R4,R4
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	LI R4,3
 ;_ccne
 	BL @_ccne##
+;eq0(label)
 	MOV R4,R4
 	JEQ $+6
-	B @cc22
+	B @cc20
+;const1(val)
 	CLR R4
 ;jump(label)
-	B @cc23
-cc22:
+	B @cc21
+cc20:
+;const1(val)
 	LI R4,1
-cc23:
+cc21:
 	MOV R4,R4
 	JNE $+6
-	B @cc21
+	B @cc19
 ;            error("try (*...)()");
 ;constant(lval)
-	LI R4,cc9+10
+	LI R4,cc9+8
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
@@ -645,9 +686,10 @@ cc23:
 ;modstk(newsp,save)
 	INCT SP
 ;        need(")");
-cc21:
+cc19:
 ;constant(lval)
-	LI R4,cc9+23
+	LI R4,cc9+21
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
@@ -656,12 +698,24 @@ cc21:
 	INCT SP
 ;    }
 ;modstk(newsp,save)
-;    else if(match("[")) {
+;    else if(*id == VARIABLE && match("[")) {
 ;jump(label)
+	B @cc22
+cc18:
+;getloc(sym, off)
+	MOV @8(SP),R4 ;optimised load
+;indirect ccgint
+	MOV *R4,R4
+;zpush()
+	MOV R4,R3 ;optimised push/pop
+	LI R4,1
+;_cceq
+	C R3,R4 ;optimised
+	JEQ $+6
 	B @cc24
-cc20:
 ;constant(lval)
-	LI R4,cc9+25
+	LI R4,cc9+23
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
@@ -670,81 +724,71 @@ cc20:
 	INCT SP
 	MOV R4,R4
 	JNE $+6
+	B @cc24
+;const1(val)
+	LI R4,1
+;jump(label)
 	B @cc25
-;        if(*id == POINTER) {                    /* *name[]: array of  */
+cc24:
+;const1(val)
+	CLR R4
+cc25:
+	MOV R4,R4
+	JNE $+6
+	B @cc23
+;        *id = aid;
 ;modstk(newsp,save)
-;getloc(sym, off)
-	MOV @10(SP),R4 ;optimised load
-;indirect ccgint
-	MOV *R4,R4
-	MOV R4,R3 ;optimised push/pop
-	LI R4,3
-;_cceq
-	C R3,R4 ;optimised
-	JEQ $+6
-	B @cc26
-;            type = type + 64;                   /* pointers           */
-;modstk(newsp,save)
-;getloc(sym, off)
-	MOV *SP,R4 ;optimised load
-;const2(val)
-	LI R3,64
-;	zadd()
-	A R3,R4
-;puttos()
-	MOV R4,*SP
-;            *sz = BPW;
 ;getloc(sym, off)
 	MOV @8(SP),R4 ;optimised load
-	MOV R4,R3 ;optimised push/pop
-	LI R4,2
-;putstk - int
-	MOV R4,*R3
-;        }
-;modstk(newsp,save)
-;        *id = aid;
-cc26:
+;zpush()
+	DECT SP
+	MOV R4,*SP
 ;getloc(sym, off)
-	MOV @10(SP),R4 ;optimised load
-	MOV R4,R5 ;optimised expr save
-;getloc(sym, off)
-	MOV @12(SP),R4 ;optimised load/expr
-	MOV R5,R3 ;optimised expr restore
+	MOV @12(SP),R4 ;optimised load
+;zpop()
+	MOV *SP+,R3
 ;putstk - int
 	MOV R4,*R3
 ;        if((*sz *= needsub()) == 0) {
 ;getloc(sym, off)
-	MOV @8(SP),R4 ;optimised load
+	MOV @6(SP),R4 ;optimised load
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;indirect ccgint
 	MOV *R4,R4
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
 	CALL @needsub
 ;modstk(newsp,save)
+;zpop()
 	MOV *SP+,R3
 	BL @_ccmult##
+;zpop()
 	MOV *SP+,R3
 ;putstk - int
 	MOV R4,*R3
+;eq0(label)
 	MOV R4,R4
 	JEQ $+6
-	B @cc27
+	B @cc26
 ;            if(aid == ARRAY)
 ;modstk(newsp,save)
 ;getloc(sym, off)
-	MOV @12(SP),R4 ;optimised load
+	MOV @10(SP),R4 ;optimised load
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	LI R4,2
 ;_cceq
 	C R3,R4 ;optimised
 	JEQ $+6
-	B @cc28
+	B @cc27
 ;                error("need array size");
 ;constant(lval)
-	LI R4,cc9+27
+	LI R4,cc9+25
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
@@ -752,9 +796,10 @@ cc26:
 ;modstk(newsp,save)
 	INCT SP
 ;            *sz = BPW;          /* size of pointer argument */
-cc28:
+cc27:
 ;getloc(sym, off)
-	MOV @8(SP),R4 ;optimised load
+	MOV @6(SP),R4 ;optimised load
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	LI R4,2
 ;putstk - int
@@ -762,30 +807,21 @@ cc28:
 ;        }
 ;modstk(newsp,save)
 ;    }
-cc27:
+cc26:
 ;modstk(newsp,save)
-;    *tp = type;
-cc25:
-cc24:
-;getloc(sym, off)
-	MOV @14(SP),R4 ;optimised load
-	MOV R4,R5 ;optimised expr save
-;getloc(sym, off)
-	MOV *SP,R4 ;optimised load/expr
-	MOV R5,R3 ;optimised expr restore
-;putstk - int
-	MOV R4,*R3
 ;    return n;
+cc23:
+cc22:
 ;getloc(sym, off)
-	MOV @4(SP),R4 ;optimised load
+	MOV @2(SP),R4 ;optimised load
 ;modstk(newsp,save)
-	AI SP,6
+	AI SP,4
 	RET
 ;}
-cc9:	BYTE 40,0,42,0,42,0,41,0,40,0,116,114
-	BYTE 121,32,40,42,46,46,46,41,40,41,0,41
-	BYTE 0,91,0,110,101,101,100,32,97,114,114,97
-	BYTE 121,32,115,105,122,101,0
+cc9:	BYTE 40,0,42,0,41,0,40,0,116,114,121,32
+	BYTE 40,42,46,46,46,41,40,41,0,41,0,91
+	BYTE 0,110,101,101,100,32,97,114,114,97,121,32
+	BYTE 115,105,122,101,0
 	EVEN
 ;kill()
 	EVEN
@@ -795,12 +831,15 @@ kill:
 ;modstk(newsp,save)
 ;getmem(sym)
 	MOV @line,R4
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	CLR R4
 ;putstk - char
 	MOVB @2*R4+1(WP),*R3
 ;    bump(0);
+;const1(val)
 	CLR R4
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
@@ -818,7 +857,8 @@ illname:
 ;    error("illegal symbol");
 ;modstk(newsp,save)
 ;constant(lval)
-	LI R4,cc30+0
+	LI R4,cc29+0
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
@@ -833,7 +873,7 @@ illname:
 ;modstk(newsp,save)
 ;modstk(newsp,save)
 	RET
-cc30:	BYTE 105,108,108,101,103,97,108,32,115,121,109,98
+cc29:	BYTE 105,108,108,101,103,97,108,32,115,121,109,98
 	BYTE 111,108,0
 	EVEN
 ;multidef(sname) char *sname;
@@ -843,7 +883,8 @@ multidef:
 ;    error("already defined");
 ;modstk(newsp,save)
 ;constant(lval)
-	LI R4,cc31+0
+	LI R4,cc30+0
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
@@ -854,7 +895,7 @@ multidef:
 ;modstk(newsp,save)
 ;modstk(newsp,save)
 	RET
-cc31:	BYTE 97,108,114,101,97,100,121,32,100,101,102,105
+cc30:	BYTE 97,108,114,101,97,100,121,32,100,101,102,105
 	BYTE 110,101,100,0
 ;/*
 ;** Step 6: needlval() is a CCC2 error helper, not a CCC3 one, so it
@@ -870,7 +911,8 @@ needlval:
 ;    error("must be lvalue");
 ;modstk(newsp,save)
 ;constant(lval)
-	LI R4,cc32+0
+	LI R4,cc31+0
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
@@ -881,7 +923,7 @@ needlval:
 ;modstk(newsp,save)
 ;modstk(newsp,save)
 	RET
-cc32:	BYTE 109,117,115,116,32,98,101,32,108,118,97,108
+cc31:	BYTE 109,117,115,116,32,98,101,32,108,118,97,108
 	BYTE 117,101,0
 	EVEN
 ;/*
@@ -896,19 +938,23 @@ parse:
 ;{
 ;    while(eof == 0) {
 ;modstk(newsp,save)
-cc34:
+cc33:
 ;getmem(sym)
 	MOV @eof,R4
+;eq0(label)
 	MOV R4,R4
 	JEQ $+6
-	B @cc35
+	B @cc34
 ;        if(amatch("extern", 6))
 ;modstk(newsp,save)
 ;constant(lval)
-	LI R4,cc33+0
+	LI R4,cc32+0
+;zpush()
 	DECT SP
 	MOV R4,*SP
+;const1(val)
 	LI R4,6
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
@@ -917,9 +963,11 @@ cc34:
 	AI SP,4
 	MOV R4,R4
 	JNE $+6
-	B @cc36
+	B @cc35
 ;            R_DODECL(EXTERNAL);
+;const1(val)
 	LI R4,3
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
@@ -928,9 +976,11 @@ cc34:
 	INCT SP
 ;        else if(R_DODECL(STATIC))
 ;jump(label)
-	B @cc37
-cc36:
+	B @cc36
+cc35:
+;const1(val)
 	LI R4,2
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
@@ -939,14 +989,15 @@ cc36:
 	INCT SP
 	MOV R4,R4
 	JNE $+6
-	B @cc38
+	B @cc37
 ;            ;
 ;        else if(match("#asm"))
 ;jump(label)
-	B @cc39
-cc38:
+	B @cc38
+cc37:
 ;constant(lval)
-	LI R4,cc33+7
+	LI R4,cc32+7
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
@@ -955,17 +1006,18 @@ cc38:
 	INCT SP
 	MOV R4,R4
 	JNE $+6
-	B @cc40
+	B @cc39
 ;            doasm();
 ;zcall()
 	CALL @doasm
 ;modstk(newsp,save)
 ;        else if(match("#include"))
 ;jump(label)
-	B @cc41
-cc40:
+	B @cc40
+cc39:
 ;constant(lval)
-	LI R4,cc33+12
+	LI R4,cc32+12
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
@@ -974,17 +1026,18 @@ cc40:
 	INCT SP
 	MOV R4,R4
 	JNE $+6
-	B @cc42
+	B @cc41
 ;            R_INCLUDE();
 ;zcall()
 	CALL @R_INCLUDE
 ;modstk(newsp,save)
 ;        else if(match("#define"))
 ;jump(label)
-	B @cc43
-cc42:
+	B @cc42
+cc41:
 ;constant(lval)
-	LI R4,cc33+21
+	LI R4,cc32+21
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
@@ -993,24 +1046,24 @@ cc42:
 	INCT SP
 	MOV R4,R4
 	JNE $+6
-	B @cc44
+	B @cc43
 ;            R_DEFINE();
 ;zcall()
 	CALL @R_DEFINE
 ;modstk(newsp,save)
 ;        else
 ;jump(label)
-	B @cc45
-cc44:
+	B @cc44
+cc43:
 ;            R_DOFN();
 ;zcall()
 	CALL @R_DOFN
 ;modstk(newsp,save)
-cc45:
-cc43:
-cc41:
-cc39:
-cc37:
+cc44:
+cc42:
+cc40:
+cc38:
+cc36:
 ;        blanks();
 ;zcall()
 	CALL @blanks
@@ -1018,13 +1071,13 @@ cc37:
 ;    }
 ;modstk(newsp,save)
 ;jump(label)
-	B @cc34
-cc35:
+	B @cc33
+cc34:
 ;}
 ;modstk(newsp,save)
 ;modstk(newsp,save)
 	RET
-cc33:	BYTE 101,120,116,101,114,110,0,35,97,115,109,0
+cc32:	BYTE 101,120,116,101,114,110,0,35,97,115,109,0
 	BYTE 35,105,110,99,108,117,100,101,0,35,100,101
 	BYTE 102,105,110,101,0
 	EVEN
@@ -1072,10 +1125,12 @@ test:
 ;modstk(newsp,save)
 ;getloc(sym, off)
 	MOV @4(SP),R4 ;optimised load
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;getloc(sym, off)
 	MOV @4(SP),R4 ;optimised load
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
@@ -1093,6 +1148,7 @@ constexpr:
 ;modstk(newsp,save)
 ;getloc(sym, off)
 	MOV @2(SP),R4 ;optimised load
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
@@ -1116,10 +1172,12 @@ expression:
 ;modstk(newsp,save)
 ;getloc(sym, off)
 	MOV @4(SP),R4 ;optimised load
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;getloc(sym, off)
 	MOV @4(SP),R4 ;optimised load
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
@@ -1144,17 +1202,19 @@ litput:
 ;modstk(newsp,save)
 ;getmem(sym)
 	MOV @litptr,R4
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	LI R4,255
 ;_ccge
 	C R3,R4 ;optimised
 	JGT $+8
 	JEQ $+6
-	B @cc52
+	B @cc51
 ;        error("literal queue overflow");
 ;modstk(newsp,save)
 ;constant(lval)
-	LI R4,cc51+0
+	LI R4,cc50+0
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
@@ -1162,15 +1222,18 @@ litput:
 ;modstk(newsp,save)
 	INCT SP
 ;        return 0;
+;const1(val)
 	CLR R4
 ;modstk(newsp,save)
 	RET
 ;    }
 ;    litq[litptr++] = value;
-cc52:
+cc51:
 ;address(ptr)
 	LI R4,litq
-	MOV R4,R5 ;optimised expr save
+;zpush()
+	DECT SP
+	MOV R4,*SP
 ;getmem(sym)
 	MOV @litptr,R4
 ;inc()
@@ -1180,21 +1243,26 @@ cc52:
 ;	dec()
 	DEC R4
 ;scale(type,tag)
-	MOV R5,R3 ;optimised expr restore
+;zpop()
+	MOV *SP+,R3
 ;	zadd()
 	A R3,R4
-	MOV R4,R5 ;optimised expr save
+;zpush()
+	DECT SP
+	MOV R4,*SP
 ;getloc(sym, off)
-	MOV @2(SP),R4 ;optimised load/expr
-	MOV R5,R3 ;optimised expr restore
+	MOV @4(SP),R4 ;optimised load
+;zpop()
+	MOV *SP+,R3
 ;putstk - char
 	MOVB @2*R4+1(WP),*R3
 ;    return 1;
+;const1(val)
 	LI R4,1
 ;modstk(newsp,save)
 	RET
 ;}
-cc51:	BYTE 108,105,116,101,114,97,108,32,113,117,101,117
+cc50:	BYTE 108,105,116,101,114,97,108,32,113,117,101,117
 	BYTE 101,32,111,118,101,114,102,108,111,119,0
 	EVEN
 ;/*
@@ -1212,30 +1280,35 @@ litchar:
 	AI SP,-4
 ;getmem(sym)
 	MOV @ch,R4
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	LI R4,92
 ;_ccne
 	BL @_ccne##
+;eq0(label)
 	MOV R4,R4
 	JEQ $+6
-	B @cc55
+	B @cc54
 ;getmem(sym)
 	MOV @nch,R4
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	CLR R4
 ;_cceq
 	C R3,R4 ;optimised
 	JNE $+6
-	B @cc55
+	B @cc54
+;const1(val)
 	CLR R4
 ;jump(label)
-	B @cc56
-cc55:
+	B @cc55
+cc54:
+;const1(val)
 	LI R4,1
-cc56:
+cc55:
 	MOV R4,R4
 	JNE $+6
-	B @cc54
+	B @cc53
 ;        return gch();
 ;zcall()
 	CALL @gch
@@ -1244,15 +1317,39 @@ cc56:
 	AI SP,4
 	RET
 ;    gch();
-cc54:
+cc53:
 ;zcall()
 	CALL @gch
 ;modstk(newsp,save)
 ;    if(ch == 'n') {
 ;getmem(sym)
 	MOV @ch,R4
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	LI R4,110
+;_cceq
+	C R3,R4 ;optimised
+	JEQ $+6
+	B @cc56
+;        gch();
+;modstk(newsp,save)
+;zcall()
+	CALL @gch
+;modstk(newsp,save)
+;        return 10;
+;const1(val)
+	LI R4,10
+;modstk(newsp,save)
+	AI SP,4
+	RET
+;    }
+;    if(ch == 't') {
+cc56:
+;getmem(sym)
+	MOV @ch,R4
+;zpush()
+	MOV R4,R3 ;optimised push/pop
+	LI R4,116
 ;_cceq
 	C R3,R4 ;optimised
 	JEQ $+6
@@ -1262,18 +1359,20 @@ cc54:
 ;zcall()
 	CALL @gch
 ;modstk(newsp,save)
-;        return 10;
-	LI R4,10
+;        return 9;
+;const1(val)
+	LI R4,9
 ;modstk(newsp,save)
 	AI SP,4
 	RET
 ;    }
-;    if(ch == 'r') {
+;    if(ch == 'b') {
 cc57:
 ;getmem(sym)
 	MOV @ch,R4
+;zpush()
 	MOV R4,R3 ;optimised push/pop
-	LI R4,114
+	LI R4,98
 ;_cceq
 	C R3,R4 ;optimised
 	JEQ $+6
@@ -1283,19 +1382,20 @@ cc57:
 ;zcall()
 	CALL @gch
 ;modstk(newsp,save)
-;        return 13;      /* CR.  Without this, '\r' fell through to the
-;                        ** octal branch and compiled as the LETTER 'r'. */
-	LI R4,13
+;        return 8;
+;const1(val)
+	LI R4,8
 ;modstk(newsp,save)
 	AI SP,4
 	RET
 ;    }
-;    if(ch == 't') {
+;    if(ch == 'f') {
 cc58:
 ;getmem(sym)
 	MOV @ch,R4
+;zpush()
 	MOV R4,R3 ;optimised push/pop
-	LI R4,116
+	LI R4,102
 ;_cceq
 	C R3,R4 ;optimised
 	JEQ $+6
@@ -1305,122 +1405,94 @@ cc58:
 ;zcall()
 	CALL @gch
 ;modstk(newsp,save)
-;        return 9;
-	LI R4,9
-;modstk(newsp,save)
-	AI SP,4
-	RET
-;    }
-;    if(ch == 'b') {
-cc59:
-;getmem(sym)
-	MOV @ch,R4
-	MOV R4,R3 ;optimised push/pop
-	LI R4,98
-;_cceq
-	C R3,R4 ;optimised
-	JEQ $+6
-	B @cc60
-;        gch();
-;modstk(newsp,save)
-;zcall()
-	CALL @gch
-;modstk(newsp,save)
-;        return 8;
-	LI R4,8
-;modstk(newsp,save)
-	AI SP,4
-	RET
-;    }
-;    if(ch == 'f') {
-cc60:
-;getmem(sym)
-	MOV @ch,R4
-	MOV R4,R3 ;optimised push/pop
-	LI R4,102
-;_cceq
-	C R3,R4 ;optimised
-	JEQ $+6
-	B @cc61
-;        gch();
-;modstk(newsp,save)
-;zcall()
-	CALL @gch
-;modstk(newsp,save)
 ;        return 12;
+;const1(val)
 	LI R4,12
 ;modstk(newsp,save)
 	AI SP,4
 	RET
 ;    }
 ;    i = 3;
-cc61:
+cc59:
+;const1(val)
 	LI R4,3
 ;put2tos()
 	MOV R4,@2(SP)
 ;    oct = 0;
+;const1(val)
 	CLR R4
 ;puttos()
 	MOV R4,*SP
 ;    while((i--) > 0 && ch >= '0' && ch <= '7')
-cc62:
+cc60:
 ;getloc(sym, off)
 	LI R4,2
 	A SP,R4
-	MOV R4,R5 ;optimised expr save
+;zpush()
+	DECT SP
+	MOV R4,*SP
 ;indirect ccgint
 	MOV *R4,R4
 ;	dec()
 	DEC R4
-	MOV R5,R3 ;optimised expr restore
+;zpop()
+	MOV *SP+,R3
 ;putstk - int
 	MOV R4,*R3
 ;inc()
 	INC R4
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	CLR R4
 ;_ccgt
 	C R3,R4 ;optimised
 	JGT $+6
-	B @cc64
+	B @cc62
 ;getmem(sym)
 	MOV @ch,R4
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	LI R4,48
 ;_ccge
 	C R3,R4 ;optimised
 	JGT $+8
 	JEQ $+6
-	B @cc64
+	B @cc62
 ;getmem(sym)
 	MOV @ch,R4
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	LI R4,55
 ;_ccle
 	C R3,R4 ;optimised
 	JLT $+8
 	JEQ $+6
-	B @cc64
+	B @cc62
+;const1(val)
 	LI R4,1
 ;jump(label)
-	B @cc65
-cc64:
+	B @cc63
+cc62:
+;const1(val)
 	CLR R4
-cc65:
+cc63:
 	MOV R4,R4
 	JNE $+6
-	B @cc63
+	B @cc61
 ;        oct = (oct << 3) + gch() - '0';
 ;getloc(sym, off)
 	MOV *SP,R4 ;optimised load
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	LI R4,3
 	BL @_ccasl##
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
 	CALL @gch
 ;modstk(newsp,save)
+;zpop()
 	MOV *SP+,R3
 ;	zadd()
 	A R3,R4
@@ -1431,17 +1503,18 @@ cc65:
 ;puttos()
 	MOV R4,*SP
 ;jump(label)
-	B @cc62
-cc63:
+	B @cc60
+cc61:
 ;    if(i == 2)
 ;getloc(sym, off)
 	MOV @2(SP),R4 ;optimised load
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	LI R4,2
 ;_cceq
 	C R3,R4 ;optimised
 	JEQ $+6
-	B @cc66
+	B @cc64
 ;        return gch();
 ;zcall()
 	CALL @gch
@@ -1450,7 +1523,7 @@ cc63:
 	AI SP,4
 	RET
 ;    return oct;
-cc66:
+cc64:
 ;getloc(sym, off)
 	MOV *SP,R4 ;optimised load
 ;modstk(newsp,save)
@@ -1471,31 +1544,35 @@ hexval:
 ;modstk(newsp,save)
 ;getloc(sym, off)
 	MOV @2(SP),R4 ;optimised load
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	LI R4,48
 ;_ccge
 	C R3,R4 ;optimised
 	JGT $+8
 	JEQ $+6
-	B @cc69
+	B @cc67
 ;getloc(sym, off)
 	MOV @2(SP),R4 ;optimised load
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	LI R4,57
 ;_ccle
 	C R3,R4 ;optimised
 	JLT $+8
 	JEQ $+6
-	B @cc69
+	B @cc67
+;const1(val)
 	LI R4,1
 ;jump(label)
-	B @cc70
-cc69:
+	B @cc68
+cc67:
+;const1(val)
 	CLR R4
-cc70:
+cc68:
 	MOV R4,R4
 	JNE $+6
-	B @cc68
+	B @cc66
 ;        return c - '0';
 ;getloc(sym, off)
 	MOV @2(SP),R4 ;optimised load
@@ -1506,34 +1583,38 @@ cc70:
 ;modstk(newsp,save)
 	RET
 ;    if(c >= 'A' && c <= 'F')
-cc68:
+cc66:
 ;getloc(sym, off)
 	MOV @2(SP),R4 ;optimised load
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	LI R4,65
 ;_ccge
 	C R3,R4 ;optimised
 	JGT $+8
 	JEQ $+6
-	B @cc72
+	B @cc70
 ;getloc(sym, off)
 	MOV @2(SP),R4 ;optimised load
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	LI R4,70
 ;_ccle
 	C R3,R4 ;optimised
 	JLT $+8
 	JEQ $+6
-	B @cc72
+	B @cc70
+;const1(val)
 	LI R4,1
 ;jump(label)
-	B @cc73
-cc72:
+	B @cc71
+cc70:
+;const1(val)
 	CLR R4
-cc73:
+cc71:
 	MOV R4,R4
 	JNE $+6
-	B @cc71
+	B @cc69
 ;        return c - 'A' + 10;
 ;getloc(sym, off)
 	MOV @2(SP),R4 ;optimised load
@@ -1548,34 +1629,38 @@ cc73:
 ;modstk(newsp,save)
 	RET
 ;    if(c >= 'a' && c <= 'f')
-cc71:
+cc69:
 ;getloc(sym, off)
 	MOV @2(SP),R4 ;optimised load
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	LI R4,97
 ;_ccge
 	C R3,R4 ;optimised
 	JGT $+8
 	JEQ $+6
-	B @cc75
+	B @cc73
 ;getloc(sym, off)
 	MOV @2(SP),R4 ;optimised load
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	LI R4,102
 ;_ccle
 	C R3,R4 ;optimised
 	JLT $+8
 	JEQ $+6
-	B @cc75
+	B @cc73
+;const1(val)
 	LI R4,1
 ;jump(label)
-	B @cc76
-cc75:
+	B @cc74
+cc73:
+;const1(val)
 	CLR R4
-cc76:
+cc74:
 	MOV R4,R4
 	JNE $+6
-	B @cc74
+	B @cc72
 ;        return c - 'a' + 10;
 ;getloc(sym, off)
 	MOV @2(SP),R4 ;optimised load
@@ -1590,7 +1675,8 @@ cc76:
 ;modstk(newsp,save)
 	RET
 ;    return -1;
-cc74:
+cc72:
+;const1(val)
 	SETO R4
 ;modstk(newsp,save)
 	RET
@@ -1608,20 +1694,40 @@ number:
 ;getloc(sym, off)
 	LI R4,4
 	A SP,R4
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	CLR R4
 ;putstk - int
 	MOV R4,*R3
 ;    minus = 0;
+;const1(val)
 	CLR R4
 ;put2tos()
 	MOV R4,@2(SP)
 ;    while(1) {
-cc78:
+cc76:
 ;        if(match("+"))
 ;modstk(newsp,save)
 ;constant(lval)
-	LI R4,cc77+0
+	LI R4,cc75+0
+;zpush()
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @match
+;modstk(newsp,save)
+	INCT SP
+	MOV R4,R4
+	JNE $+6
+	B @cc78
+;            ;
+;        else if(match("-"))
+;jump(label)
+	B @cc79
+cc78:
+;constant(lval)
+	LI R4,cc75+2
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
@@ -1631,68 +1737,57 @@ cc78:
 	MOV R4,R4
 	JNE $+6
 	B @cc80
-;            ;
-;        else if(match("-"))
-;jump(label)
-	B @cc81
-cc80:
-;constant(lval)
-	LI R4,cc77+2
-	DECT SP
-	MOV R4,*SP
-;zcall()
-	CALL @match
-;modstk(newsp,save)
-	INCT SP
-	MOV R4,R4
-	JNE $+6
-	B @cc82
 ;            minus = 1;
+;const1(val)
 	LI R4,1
 ;put2tos()
 	MOV R4,@2(SP)
 ;        else
 ;jump(label)
-	B @cc83
-cc82:
+	B @cc81
+cc80:
 ;            break;
 ;modstk(newsp,save)
 ;jump(label)
-	B @cc79
-cc83:
+	B @cc77
 cc81:
+cc79:
 ;    }
 ;modstk(newsp,save)
 ;jump(label)
-	B @cc78
-cc79:
+	B @cc76
+cc77:
 ;    if(isdigit(ch) == 0)
 ;getmem(sym)
 	MOV @ch,R4
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
 	CALL @isdigit
 ;modstk(newsp,save)
 	INCT SP
+;eq0(label)
 	MOV R4,R4
 	JEQ $+6
-	B @cc84
+	B @cc82
 ;        return 0;
+;const1(val)
 	CLR R4
 ;modstk(newsp,save)
 	AI SP,6
 	RET
 ;    if(ch == '0') {
-cc84:
+cc82:
 ;getmem(sym)
 	MOV @ch,R4
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	LI R4,48
 ;_cceq
 	C R3,R4 ;optimised
 	JEQ $+6
-	B @cc85
+	B @cc83
 ;        gch();
 ;modstk(newsp,save)
 ;zcall()
@@ -1701,38 +1796,43 @@ cc84:
 ;        if(ch == 'x' || ch == 'X') {
 ;getmem(sym)
 	MOV @ch,R4
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	LI R4,120
 ;_cceq
 	C R3,R4 ;optimised
 	JNE $+6
-	B @cc87
+	B @cc85
 ;getmem(sym)
 	MOV @ch,R4
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	LI R4,88
 ;_cceq
 	C R3,R4 ;optimised
 	JNE $+6
-	B @cc87
+	B @cc85
+;const1(val)
 	CLR R4
 ;jump(label)
-	B @cc88
-cc87:
+	B @cc86
+cc85:
+;const1(val)
 	LI R4,1
-cc88:
+cc86:
 	MOV R4,R4
 	JNE $+6
-	B @cc86
+	B @cc84
 ;            gch();
 ;modstk(newsp,save)
 ;zcall()
 	CALL @gch
 ;modstk(newsp,save)
 ;            while((digit = hexval(ch)) >= 0) {
-cc89:
+cc87:
 ;getmem(sym)
 	MOV @ch,R4
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
@@ -1745,25 +1845,31 @@ cc89:
 	MOV  R4,R4
 	JEQ  $+8
 	JGT  $+6
-	B @cc90
+	B @cc88
 ;                k = k * 16 + digit;
 ;modstk(newsp,save)
 ;getloc(sym, off)
 	LI R4,4
 	A SP,R4
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;getloc(sym, off)
 	MOV @6(SP),R4 ;optimised load
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	LI R4,16
 	BL @_ccmult##
-	MOV R4,R5 ;optimised expr save
+;zpush()
+	DECT SP
+	MOV R4,*SP
 ;getloc(sym, off)
-	MOV @2(SP),R4 ;optimised load/expr
-	MOV R5,R3 ;optimised expr restore
+	MOV @4(SP),R4 ;optimised load
+;zpop()
+	MOV *SP+,R3
 ;	zadd()
 	A R3,R4
+;zpop()
 	MOV *SP+,R3
 ;putstk - int
 	MOV R4,*R3
@@ -1774,60 +1880,68 @@ cc89:
 ;            }
 ;modstk(newsp,save)
 ;jump(label)
-	B @cc89
-cc90:
+	B @cc87
+cc88:
 ;        }
 ;modstk(newsp,save)
 ;        else {
 ;jump(label)
-	B @cc91
-cc86:
+	B @cc89
+cc84:
 ;            while(ch >= '0' && ch <= '7')
 ;modstk(newsp,save)
-cc92:
+cc90:
 ;getmem(sym)
 	MOV @ch,R4
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	LI R4,48
 ;_ccge
 	C R3,R4 ;optimised
 	JGT $+8
 	JEQ $+6
-	B @cc94
+	B @cc92
 ;getmem(sym)
 	MOV @ch,R4
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	LI R4,55
 ;_ccle
 	C R3,R4 ;optimised
 	JLT $+8
 	JEQ $+6
-	B @cc94
+	B @cc92
+;const1(val)
 	LI R4,1
 ;jump(label)
-	B @cc95
-cc94:
+	B @cc93
+cc92:
+;const1(val)
 	CLR R4
-cc95:
+cc93:
 	MOV R4,R4
 	JNE $+6
-	B @cc93
+	B @cc91
 ;                k = k * 8 + gch() - '0';
 ;getloc(sym, off)
 	LI R4,4
 	A SP,R4
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;getloc(sym, off)
 	MOV @6(SP),R4 ;optimised load
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	LI R4,8
 	BL @_ccmult##
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
 	CALL @gch
 ;modstk(newsp,save)
+;zpop()
 	MOV *SP+,R3
 ;	zadd()
 	A R3,R4
@@ -1835,26 +1949,28 @@ cc95:
 	LI R3,-48
 ;	zadd()
 	A R3,R4
+;zpop()
 	MOV *SP+,R3
 ;putstk - int
 	MOV R4,*R3
 ;jump(label)
-	B @cc92
-cc93:
+	B @cc90
+cc91:
 ;        }
 ;modstk(newsp,save)
-cc91:
+cc89:
 ;    }
 ;modstk(newsp,save)
 ;    else {
 ;jump(label)
-	B @cc96
-cc85:
+	B @cc94
+cc83:
 ;        while(isdigit(ch))
 ;modstk(newsp,save)
-cc97:
+cc95:
 ;getmem(sym)
 	MOV @ch,R4
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
@@ -1863,23 +1979,27 @@ cc97:
 	INCT SP
 	MOV R4,R4
 	JNE $+6
-	B @cc98
+	B @cc96
 ;            k = k * 10 + gch() - '0';
 ;getloc(sym, off)
 	LI R4,4
 	A SP,R4
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;getloc(sym, off)
 	MOV @6(SP),R4 ;optimised load
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	LI R4,10
 	BL @_ccmult##
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
 	CALL @gch
 ;modstk(newsp,save)
+;zpop()
 	MOV *SP+,R3
 ;	zadd()
 	A R3,R4
@@ -1887,47 +2007,55 @@ cc97:
 	LI R3,-48
 ;	zadd()
 	A R3,R4
+;zpop()
 	MOV *SP+,R3
 ;putstk - int
 	MOV R4,*R3
 ;jump(label)
-	B @cc97
-cc98:
+	B @cc95
+cc96:
 ;    }
 ;modstk(newsp,save)
-cc96:
+cc94:
 ;    if(minus) {
 ;getloc(sym, off)
 	MOV @2(SP),R4 ;optimised load
 	MOV R4,R4
 	JNE $+6
-	B @cc99
+	B @cc97
 ;        *value = -k;
 ;modstk(newsp,save)
 ;getloc(sym, off)
 	MOV @8(SP),R4 ;optimised load
-	MOV R4,R5 ;optimised expr save
+;zpush()
+	DECT SP
+	MOV R4,*SP
 ;getloc(sym, off)
-	MOV @4(SP),R4 ;optimised load/expr
+	MOV @6(SP),R4 ;optimised load
 ;neg()
 	NEG R4
-	MOV R5,R3 ;optimised expr restore
+;zpop()
+	MOV *SP+,R3
 ;putstk - int
 	MOV R4,*R3
 ;        return INT;
+;const1(val)
 	LI R4,8
 ;modstk(newsp,save)
 	AI SP,6
 	RET
 ;    }
 ;    *value = k;
-cc99:
+cc97:
 ;getloc(sym, off)
 	MOV @8(SP),R4 ;optimised load
-	MOV R4,R5 ;optimised expr save
+;zpush()
+	DECT SP
+	MOV R4,*SP
 ;getloc(sym, off)
-	MOV @4(SP),R4 ;optimised load/expr
-	MOV R5,R3 ;optimised expr restore
+	MOV @6(SP),R4 ;optimised load
+;zpop()
+	MOV *SP+,R3
 ;putstk - int
 	MOV R4,*R3
 ;    if(k < 0)
@@ -1936,20 +2064,22 @@ cc99:
 ;lt0(label)
 	MOV R4,R4
 	JLT $+6
-	B @cc100
+	B @cc98
 ;        return UINT;
+;const1(val)
 	LI R4,9
 ;modstk(newsp,save)
 	AI SP,6
 	RET
 ;    return INT;
-cc100:
+cc98:
+;const1(val)
 	LI R4,8
 ;modstk(newsp,save)
 	AI SP,6
 	RET
 ;}
-cc77:	BYTE 43,0,45,0
+cc75:	BYTE 43,0,45,0
 ;/*
 ;** Parse a string literal into the resident literal queue.
 ;**
@@ -1984,49 +2114,56 @@ string:
 ;    if(match("\"") == 0)
 ;modstk(newsp,save)
 ;constant(lval)
-	LI R4,cc101+0
+	LI R4,cc99+0
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
 	CALL @match
 ;modstk(newsp,save)
 	INCT SP
+;eq0(label)
 	MOV R4,R4
 	JEQ $+6
-	B @cc102
+	B @cc100
 ;        return 0;
+;const1(val)
 	CLR R4
 ;modstk(newsp,save)
 	RET
 ;    *offset = litptr;
-cc102:
+cc100:
 ;getloc(sym, off)
 	MOV @2(SP),R4 ;optimised load
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	MOV @litptr,R4
 ;putstk - int
 	MOV R4,*R3
 ;    while(ch != '"') {
-cc103:
+cc101:
 ;getmem(sym)
 	MOV @ch,R4
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	LI R4,34
 ;_ccne
 	C R3,R4 ;optimised
 	JNE $+6
-	B @cc104
+	B @cc102
 ;        if(ch == 0) {
 ;modstk(newsp,save)
 ;getmem(sym)
 	MOV @ch,R4
+;eq0(label)
 	MOV R4,R4
 	JEQ $+6
-	B @cc105
+	B @cc103
 ;            error("missing quote");
 ;modstk(newsp,save)
 ;constant(lval)
-	LI R4,cc101+2
+	LI R4,cc99+2
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
@@ -2034,15 +2171,17 @@ cc103:
 ;modstk(newsp,save)
 	INCT SP
 ;            return 0;
+;const1(val)
 	CLR R4
 ;modstk(newsp,save)
 	RET
 ;        }
 ;        litput(litchar());
-cc105:
+cc103:
 ;zcall()
 	CALL @litchar
 ;modstk(newsp,save)
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
@@ -2052,14 +2191,16 @@ cc105:
 ;    }
 ;modstk(newsp,save)
 ;jump(label)
-	B @cc103
-cc104:
+	B @cc101
+cc102:
 ;    gch();
 ;zcall()
 	CALL @gch
 ;modstk(newsp,save)
 ;    litput(0);
+;const1(val)
 	CLR R4
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
@@ -2067,11 +2208,12 @@ cc104:
 ;modstk(newsp,save)
 	INCT SP
 ;    return 1;
+;const1(val)
 	LI R4,1
 ;modstk(newsp,save)
 	RET
 ;}
-cc101:	BYTE 34,0,109,105,115,115,105,110,103,32,113,117
+cc99:	BYTE 34,0,109,105,115,115,105,110,103,32,113,117
 	BYTE 111,116,101,0
 ;/*
 ;** Resident literal/constant services for the expression engine.
@@ -2102,6 +2244,7 @@ constant:
 	LI R3,6
 ;	zadd()
 	A R3,R4
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;getloc(sym, off)
@@ -2110,19 +2253,23 @@ constant:
 	LI R3,8
 ;	zadd()
 	A R3,R4
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
 	CALL @number
 ;modstk(newsp,save)
 	INCT SP
+;zpop()
 	MOV *SP+,R3
 ;putstk - int
 	MOV R4,*R3
 	MOV R4,R4
 	JNE $+6
-	B @cc107
+	B @cc105
+;const1(val)
 	LI R4,31
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;getloc(sym, off)
@@ -2133,6 +2280,7 @@ constant:
 	A R3,R4
 ;indirect ccgint
 	MOV *R4,R4
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
@@ -2141,14 +2289,15 @@ constant:
 	AI SP,4
 ;  else if(is[TC] = chrcon(is + CV)) gen(GETw1n,  is[CV]);
 ;jump(label)
-	B @cc108
-cc107:
+	B @cc106
+cc105:
 ;getloc(sym, off)
 	MOV @4(SP),R4 ;optimised load
 ;const2(val)
 	LI R3,6
 ;	zadd()
 	A R3,R4
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;getloc(sym, off)
@@ -2157,19 +2306,23 @@ cc107:
 	LI R3,8
 ;	zadd()
 	A R3,R4
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
 	CALL @chrcon
 ;modstk(newsp,save)
 	INCT SP
+;zpop()
 	MOV *SP+,R3
 ;putstk - int
 	MOV R4,*R3
 	MOV R4,R4
 	JNE $+6
-	B @cc109
+	B @cc107
+;const1(val)
 	LI R4,31
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;getloc(sym, off)
@@ -2180,6 +2333,7 @@ cc107:
 	A R3,R4
 ;indirect ccgint
 	MOV *R4,R4
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
@@ -2188,10 +2342,11 @@ cc107:
 	AI SP,4
 ;  else if(string(&offset))          gen(POINT1l, offset);
 ;jump(label)
-	B @cc110
-cc109:
+	B @cc108
+cc107:
 ;getloc(sym, off)
 	MOV SP,R4
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
@@ -2200,12 +2355,15 @@ cc109:
 	INCT SP
 	MOV R4,R4
 	JNE $+6
-	B @cc111
+	B @cc109
+;const1(val)
 	LI R4,24
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;getloc(sym, off)
 	MOV @2(SP),R4 ;optimised load
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
@@ -2214,16 +2372,18 @@ cc109:
 	AI SP,4
 ;  else return 0;
 ;jump(label)
-	B @cc112
-cc111:
+	B @cc110
+cc109:
+;const1(val)
 	CLR R4
 ;modstk(newsp,save)
 	INCT SP
 	RET
-cc112:
 cc110:
 cc108:
+cc106:
 ;  return 1;
+;const1(val)
 	LI R4,1
 ;modstk(newsp,save)
 	INCT SP
@@ -2236,59 +2396,68 @@ chrcon:
 ;  k = 0;
 ;modstk(newsp,save)
 	DECT SP
+;const1(val)
 	CLR R4
 ;puttos()
 	MOV R4,*SP
 ;  if(match("'") == 0) return 0;
 ;constant(lval)
-	LI R4,cc113+0
+	LI R4,cc111+0
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
 	CALL @match
 ;modstk(newsp,save)
 	INCT SP
+;eq0(label)
 	MOV R4,R4
 	JEQ $+6
-	B @cc114
+	B @cc112
+;const1(val)
 	CLR R4
 ;modstk(newsp,save)
 	INCT SP
 	RET
 ;  while(ch != '\'') k = (k << 8) + (litchar() & 255);
-cc114:
-cc115:
+cc112:
+cc113:
 ;getmem(sym)
 	MOV @ch,R4
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	LI R4,39
 ;_ccne
 	C R3,R4 ;optimised
 	JNE $+6
-	B @cc116
+	B @cc114
 ;getloc(sym, off)
 	MOV *SP,R4 ;optimised load
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	LI R4,8
 	BL @_ccasl##
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
 	CALL @litchar
 ;modstk(newsp,save)
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	LI R4,255
 ;zand()
 	INV R3
 	SZC R3,R4
+;zpop()
 	MOV *SP+,R3
 ;	zadd()
 	A R3,R4
 ;puttos()
 	MOV R4,*SP
 ;jump(label)
-	B @cc115
-cc116:
+	B @cc113
+cc114:
 ;  gch();
 ;zcall()
 	CALL @gch
@@ -2296,19 +2465,23 @@ cc116:
 ;  *value = k;
 ;getloc(sym, off)
 	MOV @4(SP),R4 ;optimised load
-	MOV R4,R5 ;optimised expr save
+;zpush()
+	DECT SP
+	MOV R4,*SP
 ;getloc(sym, off)
-	MOV *SP,R4 ;optimised load/expr
-	MOV R5,R3 ;optimised expr restore
+	MOV @2(SP),R4 ;optimised load
+;zpop()
+	MOV *SP+,R3
 ;putstk - int
 	MOV R4,*R3
 ;  return (INT);
+;const1(val)
 	LI R4,8
 ;modstk(newsp,save)
 	INCT SP
 	RET
 ;  }
-cc113:	BYTE 39,0
+cc111:	BYTE 39,0
 ;/*
 ;** Resident while-context management.
 ;**
@@ -2332,7 +2505,9 @@ addwhile:
 	DECT SP
 ;getmem(sym)
 	MOV @wqptr,R4
-	MOV R4,R5 ;optimised expr save
+;zpush()
+	DECT SP
+	MOV R4,*SP
 ;address(ptr)
 	LI R4,wq
 ;const2(val)
@@ -2343,15 +2518,17 @@ addwhile:
 	LI R3,-6
 ;	zadd()
 	A R3,R4
-	MOV R5,R3 ;optimised expr restore
+;zpop()
+	MOV *SP+,R3
 ;_cceq
 	C R3,R4 ;optimised
 	JEQ $+6
-	B @cc118
+	B @cc116
 ;        error("control statement nesting limit");
 ;modstk(newsp,save)
 ;constant(lval)
-	LI R4,cc117+0
+	LI R4,cc115+0
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
@@ -2359,15 +2536,17 @@ addwhile:
 ;modstk(newsp,save)
 	INCT SP
 ;        return 0;
+;const1(val)
 	CLR R4
 ;modstk(newsp,save)
 	INCT SP
 	RET
 ;    }
 ;    ptr[WQSP] = csp;
-cc118:
+cc116:
 ;getloc(sym, off)
 	MOV @4(SP),R4 ;optimised load
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	MOV @csp,R4
 ;putstk - int
@@ -2377,11 +2556,13 @@ cc118:
 	MOV @4(SP),R4 ;optimised load
 ;inct()
 	INCT R4
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
 	CALL @getlabel
 ;modstk(newsp,save)
+;zpop()
 	MOV *SP+,R3
 ;putstk - int
 	MOV R4,*R3
@@ -2392,28 +2573,32 @@ cc118:
 	LI R3,4
 ;	zadd()
 	A R3,R4
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
 	CALL @getlabel
 ;modstk(newsp,save)
+;zpop()
 	MOV *SP+,R3
 ;putstk - int
 	MOV R4,*R3
 ;    k = 0;
+;const1(val)
 	CLR R4
 ;puttos()
 	MOV R4,*SP
 ;    while(k < WQSIZ)
-cc119:
+cc117:
 ;getloc(sym, off)
 	MOV *SP,R4 ;optimised load
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	LI R4,3
 ;_cclt
 	C R3,R4 ;optimised
 	JLT $+6
-	B @cc120
+	B @cc118
 ;        *wqptr++ = ptr[k++];
 ;getmem(sym)
 	MOV @wqptr,R4
@@ -2423,21 +2608,26 @@ cc119:
 	MOV R4,@wqptr
 ;	dect()
 	DECT R4
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;getloc(sym, off)
 	MOV @6(SP),R4 ;optimised load
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;getloc(sym, off)
 	LI R4,4
 	A SP,R4
-	MOV R4,R5 ;optimised expr save
+;zpush()
+	DECT SP
+	MOV R4,*SP
 ;indirect ccgint
 	MOV *R4,R4
 ;inc()
 	INC R4
-	MOV R5,R3 ;optimised expr restore
+;zpop()
+	MOV *SP+,R3
 ;putstk - int
 	MOV R4,*R3
 ;	dec()
@@ -2445,24 +2635,27 @@ cc119:
 ;scale(type,tag)
 ;	doublereg()
 	A R4,R4
+;zpop()
 	MOV *SP+,R3
 ;	zadd()
 	A R3,R4
 ;indirect ccgint
 	MOV *R4,R4
+;zpop()
 	MOV *SP+,R3
 ;putstk - int
 	MOV R4,*R3
 ;jump(label)
-	B @cc119
-cc120:
+	B @cc117
+cc118:
 ;    return 1;
+;const1(val)
 	LI R4,1
 ;modstk(newsp,save)
 	INCT SP
 	RET
 ;}
-cc117:	BYTE 99,111,110,116,114,111,108,32,115,116,97,116
+cc115:	BYTE 99,111,110,116,114,111,108,32,115,116,97,116
 	BYTE 101,109,101,110,116,32,110,101,115,116,105,110
 	BYTE 103,32,108,105,109,105,116,0
 ;readwhile(ptr) int *ptr;
@@ -2473,16 +2666,18 @@ readwhile:
 ;modstk(newsp,save)
 ;getloc(sym, off)
 	MOV @2(SP),R4 ;optimised load
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	LI R4,wq
 ;_ccule
 	C R3,R4 ;optimised
 	JLE $+6
-	B @cc122
+	B @cc120
 ;        error("out of context");
 ;modstk(newsp,save)
 ;constant(lval)
-	LI R4,cc121+0
+	LI R4,cc119+0
+;zpush()
 	DECT SP
 	MOV R4,*SP
 ;zcall()
@@ -2490,12 +2685,13 @@ readwhile:
 ;modstk(newsp,save)
 	INCT SP
 ;        return 0;
+;const1(val)
 	CLR R4
 ;modstk(newsp,save)
 	RET
 ;    }
 ;    return ptr - WQSIZ;
-cc122:
+cc120:
 ;getloc(sym, off)
 	MOV @2(SP),R4 ;optimised load
 ;const2(val)
@@ -2505,7 +2701,7 @@ cc122:
 ;modstk(newsp,save)
 	RET
 ;}
-cc121:	BYTE 111,117,116,32,111,102,32,99,111,110,116,101
+cc119:	BYTE 111,117,116,32,111,102,32,99,111,110,116,101
 	BYTE 120,116,0
 	EVEN
 ;delwhile()
@@ -2516,12 +2712,13 @@ delwhile:
 ;modstk(newsp,save)
 ;getmem(sym)
 	MOV @wqptr,R4
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	LI R4,wq
 ;_ccugt
 	C R3,R4 ;optimised
 	JH $+6
-	B @cc124
+	B @cc122
 ;        wqptr = wqptr - WQSIZ;
 ;getmem(sym)
 	MOV @wqptr,R4
@@ -2532,7 +2729,7 @@ delwhile:
 ;putmem(sym)
 	MOV R4,@wqptr
 ;}
-cc124:
+cc122:
 ;modstk(newsp,save)
 ;modstk(newsp,save)
 	RET
@@ -2547,21 +2744,22 @@ cc124:
 	EXT R_INCLUDE
 	EXT need
 	EXT R_DODECL
+	EXT swnext
 	ENT kill
 	EXT line
 	EXT ncmp
 	EXT symtab
 	ENT delwhile
 	ENT lastst
-	ENT statement
+	EXT swstab
 	EXT litq
 	EXT declared
+	ENT statement
 	EXT R_DOFN
 	ENT monitor
 	ENT nogo
 	ENT lout
 	ENT litlab
-	EXT stmtovlinit
 	EXT skip
 	ENT multidef
 	ENT test
@@ -2571,9 +2769,10 @@ cc124:
 	EXT pptr
 	EXT locptr
 	ENT constant
-	ENT needsub
+	EXT swdefault
 	EXT errflag
 	EXT R_EXPR
+	ENT needsub
 	ENT illname
 	EXT oldseg
 	ENT litptr
@@ -2612,13 +2811,13 @@ cc124:
 	ENT argstk
 	EXT nxtlab
 	EXT skiplevel
+	EXT swend
 	ENT ssname
 	EXT R_DEFINE
 	EXT getlabel
 	EXT glbptr
 	EXT macptr
 	ENT decl
-	EXT elsize
 	EXT iflevel
 	ENT constexpr
 	EVEN

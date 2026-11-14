@@ -1,4 +1,4 @@
-;* * *  Small-C/Plus Version 1.06g for the TMS 9900 - Cameron * * *
+;* * *  Small-C/Plus Version 1.06a for the TMS 9900 - Cameron * * *
 ;       Cain, Van Zandt, Hendrix, Yorston, Cameron
 ;          Original Z80  Version 21st April 1990       
 ;
@@ -7,9 +7,6 @@ R1	EQU 1
 R2	EQU 2
 R3	EQU 3
 R4	EQU 4
-R5	EQU 5
-R6	EQU 6
-R7	EQU 7
 R8	EQU 8
 SL	EQU 9
 R9	EQU 9
@@ -54,11 +51,10 @@ R11	EQU 11
 ;** no remap, nothing to think about at the call site.
 ;**
 ;** DO NOT give this module a second AORG, and do not let it grow past
-;** its page: with 15-char names (NAMESIZE 16) the pools are sized so
-;** 150 macros plus putmac() fit with roughly 280 bytes spare. MACNBR was
-;** reduced from 200 when NAMESIZE widened 9->16 grew macn past the page.
+;** its page: the pools are sized so 200 macros plus putmac() fit with
+;** roughly 400 bytes spare, and the build prints the number.
 ;*/
-;#define NAMESIZE  16
+;#define NAMESIZE  9
 ;/*
 ;** MUST MATCH THE SAME BLOCK IN CC_PREP.C. Duplicated deliberately --
 ;** every page of the expression engine duplicates its p-code defines
@@ -68,15 +64,15 @@ R11	EQU 11
 ;**     macn   MACNBR * (NAMESIZE+2)   name + NUL + 2-byte macq index
 ;**     macq   MACNBR * 7              replacement text, NUL-separated
 ;*/
-;#define MACNBR   150
+;#define MACNBR   200
 ;#define MACNSIZE (MACNBR*(NAMESIZE+2))
 ;#define MACQSIZE (MACNBR*7)
 ;#define MACMAX   (MACQSIZE-1)
 ;extern int macptr;
 ;char macn[MACNSIZE];
-macn:	BSS 2700
+macn:	BSS 2200
 ;char macq[MACQSIZE];
-macq:	BSS 1050
+macq:	BSS 1400
 ;/*
 ;** Store one character of a macro's replacement text. CCC1 putmac().
 ;**
@@ -93,23 +89,28 @@ putmac:
 ;modstk(newsp,save)
 ;address(ptr)
 	LI R4,macq
+;zpush()
 	MOV R4,R3 ;optimised push/pop
 	MOV @macptr,R4
 ;	zadd()
 	A R3,R4
-	MOV R4,R5 ;optimised expr save
+;zpush()
+	DECT SP
+	MOV R4,*SP
 ;getloc(sym, off)
 ;Char offset
-	MOVB @3(SP),R4 ;optimised load/expr
+	MOVB @5(SP),R4 ;optimised load
 	SRA R4,8
-	MOV R5,R3 ;optimised expr restore
+;zpop()
+	MOV *SP+,R3
 ;putstk - char
 	MOVB @2*R4+1(WP),*R3
 ;    if(macptr < MACMAX) ++macptr;
 ;getmem(sym)
 	MOV @macptr,R4
+;zpush()
 	MOV R4,R3 ;optimised push/pop
-	LI R4,1049
+	LI R4,1399
 ;_cclt
 	C R3,R4 ;optimised
 	JLT $+6

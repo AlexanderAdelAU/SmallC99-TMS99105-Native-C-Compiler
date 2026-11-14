@@ -3,7 +3,7 @@
 **
 ** AORG >A000, overlay ID 7, physical page 12. The implementation is
 ** intentionally parallel to CC_CLI, but derives native .A99 output names
-** and identifies the separate TMS-target compiler.
+** and identifies the TMS99105 SBC compiler.
 */
 
 #asm
@@ -15,11 +15,9 @@
 #define NAMEMAX 14
 
 extern puts();
-extern putchar();
 extern char srcname[];
 extern char outname[];
 extern int verbose;
-extern int mainflg;
 
 upcase(c)
 int c;
@@ -30,10 +28,6 @@ int c;
     return c;
 }
 
-/*  Names stop at any control character, not just NUL.  A command line
-    handed over by the procedure engine still carries its CR, and
-    _setargs splits on SPACE only, so the last token arrives as
-    "MAIN2\r" and appendext then builds "MAIN2\r.C".  */
 copyname(dst, src)
 char *dst;
 char *src;
@@ -41,7 +35,7 @@ char *src;
     int n;
 
     n = 0;
-    while(*src > ' ') {
+    while(*src) {
         if(n >= NAMEMAX) {
             dst[NAMEMAX] = 0;
             return NO;
@@ -85,7 +79,7 @@ char *src;
     int n;
 
     n = 0;
-    while(*src > ' ') {
+    while(*src) {
         if(*src == '.') break;
         if(n >= NAMEMAX) return NO;
         dst[n++] = *src++;
@@ -114,7 +108,7 @@ char *s;
         if(s[0] != '-') return NO;
     }
     if(s[1] != '?') return NO;
-    if(s[2] > ' ') return NO;	/*  tolerate a trailing CR  */
+    if(s[2]) return NO;
     return YES;
 }
 
@@ -125,27 +119,24 @@ char *s;
         if(s[0] != '-') return NO;
     }
     if(upcase(s[1]) != 'V') return NO;
-    if(s[2] > ' ') return NO;	/*  tolerate a trailing CR  */
+    if(s[2]) return NO;
     return YES;
 }
 
-ismodule(s)
-char *s;
+banner()
 {
-    if(s[0] != '/') {
-        if(s[0] != '-') return NO;
-    }
-    if(upcase(s[1]) != 'M') return NO;
-    if(s[2] > ' ') return NO;	/*  tolerate a trailing CR  */
-    return YES;
+    puts("SMALLC99 2.2 M38d - TMS99105 SBC compiler\n");
+    puts("SBC build: 27-Aug-2026\n");
+    puts("Lineage: Cain, Van Zandt, Hendrix, Yorston, Cameron\n");
+    puts("Memory: >1000-7FFF resident; >8000-BFFF 16K mapped overlay; >C000 system reserved\n");
+    puts("\n");
 }
 
 usage()
 {
-    puts("Usage: SMALLC99 source[.C] [output[.A99]] [-V] [-M]\n");
+    puts("Usage: SMALLC99 source[.C] [output[.A99]] [/V]\n");
     puts("       SMALLC99 /?\n");
-    puts("  -V   verbose compile progress (/V also accepted)\n");
-    puts("  -M   module mode: omit IOLIB startup branch (/M also accepted)\n");
+    puts("  /V   verbose compile progress\n");
     puts("  If output is omitted, source.A99 is used.\n");
 }
 
@@ -167,9 +158,10 @@ char **argv;
 
     files = 0;
     verbose = NO;
-    mainflg = YES;             /* normal executable unless -M is present */
     srcname[0] = 0;
     outname[0] = 0;
+
+    banner();
 
     i = 1;
     while(i < argc) {
@@ -180,10 +172,6 @@ char **argv;
         }
         if(isverbose(arg)) {
             verbose = YES;
-            continue;
-        }
-        if(ismodule(arg)) {
-            mainflg = NO;
             continue;
         }
         if(arg[0] == '/') {
@@ -249,71 +237,4 @@ char **argv;
     }
 
     return YES;
-}
-
-/*
-** ==== Error reports (reached through R_ERROR; error() is resident) ====
-**
-** errrep(msg)  one error: console   *** line N: msg
-**                                       <the source line>
-**                          .A99     ;*** line N: msg
-** errrep(0)    the summary at the end: SMALLC99: N error(s)
-** An error inside an #include reports the #include line's number.
-*/
-extern int errcnt;
-extern int lineno;
-extern int incunit;
-extern int outunit;
-extern char *line;      /* the current line (raw or macro-expanded) */
-
-putnum(n) int n; {
-    char b[6];
-    int k;
-    k = 5;
-    b[k] = 0;
-    do {
-        b[--k] = 48 + n % 10;
-        n = n / 10;
-    } while(n && k);
-    puts(b + k);
-}
-
-filenum(n) int n; {
-    char b[6];
-    int k;
-    k = 5;
-    b[k] = 0;
-    do {
-        b[--k] = 48 + n % 10;
-        n = n / 10;
-    } while(n && k);
-    pstr(b + k);
-}
-
-errrep(msg) char *msg; {
-    char *p;
-    if(msg == 0) {
-        puts("SMALLC99: ");
-        putnum(errcnt);
-        puts(errcnt == 1 ? " error\n" : " errors\n");
-        return;
-    }
-    puts("*** line ");
-    putnum(lineno);
-    if(incunit) puts(" (in include)");
-    puts(": ");
-    puts(msg);
-    puts("\n    ");
-    p = line;
-    while(*p == ' ' || *p == 9) ++p;
-    while(*p && *p != 13 && *p != 10) putchar(*p++);    /* up to its CR */
-    puts("\n");
-    if(outunit) {
-        pnl();
-        pstr(";*** line ");
-        filenum(lineno);
-        pstr(": ");
-        pstr(msg);
-        pnl();
-    }
 }

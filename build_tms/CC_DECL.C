@@ -46,7 +46,7 @@
 	#define WORDr0   39
 
 	#define LITMAX   256
-	#define NAMESIZE  16
+	#define NAMESIZE  9
 
 	extern char symtab[];
 	extern char litq[];
@@ -72,21 +72,6 @@
 	  monitor;
 
 	/*
-	** struct|union: the parser is its own overlay (CC_STRD); reach it
-	** through the framed trampoline R_STRUCT(isunion, outer).
-	*/
-	#define STRUCTBIT 2
-	/*
-	** Storage for a global struct object (or array of them): size bytes,
-	** zero-filled.  Struct initialisers are phase 2.
-	*/
-	dstrobj(ident, size) int ident, size; {
-	  public(ident);
-	  if(match("=")) error("no struct initialiser yet");
-	  gen(BYTEr0, size);
-	  }
-
-	/*
 	** Test for global declarations.
 	*/
 	dodeclare(class) int class; {
@@ -98,10 +83,6 @@
 	      declglb(UINT, class);
 	      }
 	    }
-	  else if(amatch("struct", 6))
-	    declglb(R_STRUCT(0, 1), class);
-	  else if(amatch("union", 5))
-	    declglb(R_STRUCT(1, 1), class);
 	  else if(amatch("int", 3) || class == EXTERNAL)
 	    declglb(INT, class);
 	  else
@@ -115,16 +96,14 @@
 	** Declare a global/static object.
 	*/
 	declglb(type, class) int type, class; {
-	  int id, dim, t;
+	  int id, dim;
 
 	  while(1) {
 	    if(endst()) return;
-	    t = type;                 /* per declarator: char *a, b; */
 
 	    if(match("*")) {
 	      id  = POINTER;
 	      dim = 0;
-	      while(match("*")) t = t + 64;   /* pointer depth, bits 6-7 */
 	      }
 	    else {
 	      id  = VARIABLE;
@@ -142,32 +121,18 @@
 	      else if(match("[")) {
 	        id  = ARRAY;
 	        dim = needsub();
-	        t   = R_STRUCT(2, t);   /* further [..]: rows (CC_STRD) */
 	        }
 	      }
-	    else if(match("[")) {     /* *name[n]: array of pointers */
-	      t   = t + 64;
-	      id  = ARRAY;
-	      dim = needsub();
-	      t   = R_STRUCT(2, t);
-	      }
-	    if(t > 255) error("too many *");
 
 	    if(class == EXTERNAL)
-	      external(ssname, elsize(t), id);
-	    else if(id == FUNCTION)
-	      ;
-	    else if((t & 0xC2) == STRUCTBIT && id != POINTER)
-	      dstrobj(id, dim * elsize(t));
-	    else if(t & STRUCTBIT)
-	      initials(BPW, id, dim);
-	    else
-	      initials(elsize(t), id, dim);
+	      external(ssname, type >> 2, id);
+	    else if(id != FUNCTION)
+	      initials(type >> 2, id, dim);
 
 	    if(id == POINTER)
-	      addsym(ssname, id, t, BPW, 0, &glbptr, class);
+	      addsym(ssname, id, type, BPW, 0, &glbptr, class);
 	    else
-	      addsym(ssname, id, t, dim * elsize(t),
+	      addsym(ssname, id, type, dim * (type >> 2),
 	             0, &glbptr, class);
 
 	    if(match(",") == 0) return;
@@ -285,6 +250,6 @@
 	  }
 
 	dpoint() {
-	  pstr(" WORD $+2");
+	  pstr(" DW $+2");
 	  pnl();
 	  }

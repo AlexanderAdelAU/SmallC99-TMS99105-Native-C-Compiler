@@ -1,7 +1,7 @@
 /*
 ** CC_CD99.C -- M38d resident TMS99000 output and staging services
 **
-** This is linked only into SMALLC9T.EXE. The blessed 8086 executable keeps
+** This is linked only into SMALLC99.EXE. The blessed 8086 executable keeps
 ** CC_CODEGEN.C unchanged. The staging and p-code accounting are the Hendrix
 ** machinery; only the module formatter and paged template implementation are
 ** target-specific.
@@ -80,7 +80,6 @@
 #define SWAP1s   71
 #define SWITCH   72
 #define XOR12    73
-#define LSR12    74
 #define GETw2m   89
 
 #define NAME      7
@@ -89,10 +88,10 @@
 
 #define IDENT     0
 #define CLASS     2
-#define SYMMAX   23
+#define SYMMAX   16
 #define SYMAVG   12
 #define NUMLOCS  25
-#define NUMGLBS 140
+#define NUMGLBS 200
 #define FUNCTION  4
 #define AUTOEXT   4
 
@@ -101,8 +100,6 @@
 
 extern int csp;
 extern int oldseg;
-extern int mainflg;
-extern char srcname[];
 extern char symtab[];
 extern char ssname[];
 extern char *cptr;
@@ -130,9 +127,9 @@ int value;
 
     if(pcode == GETb1pu || pcode == GETb1p || pcode == GETw1p)
         gen(MOVE21, 0);
-    /* The old Hendrix/x86 backend pre-swapped SUB/DIV/MOD operands here.
-       TMS call.A99 and the native Small-C ABI already use R3=secondary/left
-       and R4=primary/right, so the TMS backend must consume them directly. */
+    else if(pcode == SUB12 || pcode == MOD12 || pcode == MOD12u ||
+            pcode == DIV12 || pcode == DIV12u)
+        gen(SWAP12, 0);
     else if(pcode == PUSH1)
         csp -= BPW;
     else if(pcode == POP2)
@@ -203,6 +200,7 @@ char *ptr;
 outname(ptr)
 char *ptr;
 {
+    pchar('_');
     while(*ptr >= ' ')
         pchar(*ptr++);
 }
@@ -243,9 +241,7 @@ int ident;
 
 header()
 {
-    char *p;
-
-    outline("; SmallC9T 2.2 M38d native TMS99000 output");
+    outline("; SMALLC99 2.2 M38d native TMS99000 output");
     outline("R0\tEQU 0");
     outline("R1\tEQU 1");
     outline("R2\tEQU 2");
@@ -256,24 +252,6 @@ header()
     outline("SP\tEQU 10");
     outline("R11\tEQU 11");
     outline("WP\tEQU 13");
-    outline("\tDXOP CALL,6");
-    outline("\tDXOP RET,7");
-
-    if(mainflg) {
-        /* Normal executable: enter IOLIB startup.  IOLIB later CALLs main. */
-        outline("\tSTWP WP");
-        outline("\tB @_main## ; This calls iolib99 entry point");
-    }
-    else {
-        /* -M module: no startup branch; identify the module to R99. */
-        pstr("\tNAM ");
-        p = srcname;
-        if(p[1] == ':')
-            p = p + 2;
-        while(*p && *p != '.')
-            pchar(*p++);
-        pnl();
-    }
 }
 
 trailer()

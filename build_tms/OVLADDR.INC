@@ -11,30 +11,25 @@
 ;      CC_PREP.R99=9,4,preprocess:P_PREP,dodefine:P_DEFINE,doinclude:P_INCLUDE,doasm:P_DOASM
 ;      CC_MACS.R99=10,4,putmac:-
 ;      CC_STMT.R99=3,2,statement:S_STMT
-;      CC_STMT_R.R99=14,2,doexpr:-
 ;      CC_EXPR_A.R99=4,1,expression:E_EXPR,constexpr:E_CEXPR
 ;      CC_EXPR_B.R99=5,1,test:E_TEST
 ;      CC_DFUN.R99=6,5,dofunction:D_DOFN
 ;      CC_EXPR_C.R99=7,1,level1:-
 ;      CC_EXPR_D.R99=8,1,primary:-
-;      CC_CG99.R99=11,6,ccout:P_CCOUT
-;      CC_CG99T.R99=13,6,setcodes:P_SETCODES
-;      CC_CL99.R99=12,7,getoptions:P_GETOPTS,errrep:P_ERRREP
-;      CC_STRD.R99=15,8,dostruct:T_STRUCT
+;      CC_CG99.R99=11,6,ccout:P_CCOUT,setcodes:P_SETCODES
+;      CC_CL99.R99=12,7,getoptions:P_GETOPTS
 ;------------------------------------------------------------
 
-D_DODECL   EQU 8068H	; dodeclare
-P_DOASM    EQU 8E40H	; doasm
-P_DEFINE   EQU 8AB2H	; dodefine
-P_INCLUDE  EQU 8C30H	; doinclude
-P_PREP     EQU 855AH	; preprocess
+D_DODECL   EQU 8000H	; dodeclare
+P_DOASM    EQU 8DD2H	; doasm
+P_DEFINE   EQU 8A26H	; dodefine
+P_INCLUDE  EQU 8BA6H	; doinclude
+P_PREP     EQU 84C6H	; preprocess
 S_STMT     EQU 8000H	; statement
-E_CEXPR    EQU 837CH	; constexpr
-E_EXPR     EQU 840CH	; expression
+E_CEXPR    EQU 8000H	; constexpr
+E_EXPR     EQU 8090H	; expression
 E_TEST     EQU 9000H	; test
 D_DOFN     EQU 8000H	; dofunction
-P_CCOUT    EQU 80BCH	; ccout
-P_SETCODES EQU 9000H	; setcodes
-P_ERRREP   EQU 0AB66H	; errrep
-P_GETOPTS  EQU 0A5F6H	; getoptions
-T_STRUCT   EQU 8000H	; dostruct
+P_CCOUT    EQU 0A8A0H	; ccout
+P_SETCODES EQU 0A094H	; setcodes
+P_GETOPTS  EQU 0A63AH	; getoptions

@@ -116,12 +116,10 @@ pchar:
 ;*******************************************************************
 ;  pnl() - end of line
 ;
-;  Emits one LF.  A producer ends a record with LF, never a bare CR;
-;  putc() on a text stream turns that LF into the CR+LF the .A99
-;  format requires.
+;  One C newline (CR on this target). putc() writes CR+LF to the file.
 ;*******************************************************************
 pnl:
-	LI	R2,00A00H		;LF - putc expands LF to CR+LF
+	LI	R2,00D00H		;putc expands CR to CR+LF
 	BL	@OUTC
 	RET
 

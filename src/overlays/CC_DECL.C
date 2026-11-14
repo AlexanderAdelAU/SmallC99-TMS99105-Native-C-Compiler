@@ -47,13 +47,8 @@
 
 	#define LITMAX   256
 	#define NAMESIZE  16
-	#define CHRPTR   68        /* type byte of a char pointer: CHR + one level */
 
 	extern char symtab[];
-	int ityp = 0;               /* type byte of the object being initialised */
-	int npstr = 0;              /* pointer-array elements written so far     */
-	int pbase = 0;              /* their labels are _pbase_0, _pbase_1 ...   */
-	int ptrcon = 0;             /* a pointer was given a constant: a WORD    */
 	extern char litq[];
 
 	extern char
@@ -120,7 +115,7 @@
 	** Declare a global/static object.
 	*/
 	declglb(type, class) int type, class; {
-	  int id, dim, t, n;
+	  int id, dim, t;
 
 	  while(1) {
 	    if(endst()) return;
@@ -164,16 +159,10 @@
 	      ;
 	    else if((t & 0xC2) == STRUCTBIT && id != POINTER)
 	      dstrobj(id, dim * elsize(t));
-	    else if(t & STRUCTBIT) {
-	      ityp = 0;
-	      n = initials(BPW, id, dim);
-	      }
-	    else {
-	      ityp = t;
-	      n = initials(elsize(t), id, dim);
-	      }
-	    if(id == ARRAY && dim == 0)   /* a[] = {...}: sized by its initialiser */
-	      dim = n;
+	    else if(t & STRUCTBIT)
+	      initials(BPW, id, dim);
+	    else
+	      initials(elsize(t), id, dim);
 
 	    if(id == POINTER)
 	      addsym(ssname, id, t, BPW, 0, &glbptr, class);
@@ -189,16 +178,13 @@
 	** Initialise a global object.
 	*/
 	initials(size, ident, dim) int size, ident, dim; {
-	  int savedim, pa;
+	  int savedim;
 
 	  litptr = 0;
-	  npstr = 0;
-	  ptrcon = 0;
 	  if(dim == 0) dim = -1;
 	  savedim = dim;
-	  pa = (ident == ARRAY && (ityp & 0xC0));   /* an array of pointers: */
-	  if(pa == 0) public(ident);                /* its elements go out   */
-	                                            /* first, then its name  */
+
+	  public(ident);
 
 	  if(match("=")) {
 	    if(match("{")) {
@@ -212,37 +198,17 @@
 	      init(size, ident, &dim);
 	    }
 
-	  if(savedim > 0 && dim < 0) {       /* more than was declared    */
-	    if(dim == -1 && size == 1) {     /* char a[5] = "HELLO": as C, */
-	      litptr--;                      /* no room for the 0 - drop it */
-	      dim = 0;
-	      }
-	    else error("too many initialisers");
-	    }
-
 	  if(savedim == -1 && dim == -1) {
 	    if(ident == ARRAY) error("need array size");
 	    dstowlit(0, size = BPW);
 	    }
 
-	  if(pa) {
-	    if(npstr) {              /* strings went out first: realign */
-	      pstr("\tEVEN");
-	      pnl();
-	      }
-	    public(ident);
-	    }
-	  if(ptrcon) size = BPW;     /* char *p = 0xF000: a word, whatever it */
-	                             /* points at (the type byte says char)   */
-	  if(npstr) dlabs();         /* char *a[]: WORD _pbase_0,_pbase_1... */
-	  else ddumplit(size);
+	  ddumplit(size);
 	  ddumpzer(size, dim);
 	  if((litptr + (dim > 0 ? dim * size : 0)) & 1) {
 	    pstr("\tEVEN");   /* TMS: realign after an odd */
 	    pnl();            /* sized global object       */
 	    }
-	  if(savedim == -1) return -1 - dim;    /* a[]: elements given */
-	  return savedim;
 	  }
 
 	/*
@@ -252,11 +218,6 @@
 	  int value;
 
 	  if(string(&value)) {
-	    if(ident == ARRAY && (ityp & 0xFE) == CHRPTR) {
-	      pel(1, 0);                   /* char *a[] = {"...", ...} */
-	      *dim -= 1;
-	      return;
-	      }
 	    if(ident == VARIABLE || size != 1)
 	      error("must assign to char pointer or char array");
 
@@ -266,59 +227,12 @@
 	      dpoint();
 	    }
 	  else if(constexpr(&value)) {
-	    if(ident == ARRAY && (ityp & 0xC0))
-	      pel(0, value);               /* pointer array: 0 or an address */
-	    else if(ident == POINTER) {    /* a pointer may take a constant: */
-	      dstowlit(value, BPW);        /* 0, or an address like 0xF000   */
-	      ptrcon = 1;
-	      }
-	    else
-	      dstowlit(value, size);
+	    if(ident == POINTER)
+	      error("cannot assign to pointer");
+
+	    dstowlit(value, size);
 	    *dim -= 1;
 	    }
-	  }
-
-	/*
-	** One element of a pointer-array initialiser, written at once: a
-	** string as  _pbase_k: BYTE ...  (and the queue emptied), a constant
-	** as  _pbase_k EQU value.  The array itself follows (dlabs).
-	*/
-	pel(isstr, v) int isstr, v; {
-	  if(npstr == 0) pbase = getlabel();
-	  pchar('_');
-	  pdec(pbase);
-	  pchar('_');
-	  pdec(npstr);
-	  ++npstr;
-	  if(isstr) {
-	    pchar(':');
-	    pnl();
-	    ddumplit(1);
-	    litptr = 0;
-	    }
-	  else {
-	    pstr("\tEQU\t");
-	    pdec(v);
-	    pnl();
-	    }
-	  }
-
-	dlabs() {
-	  int k;
-	  k = 0;
-	  while(k < npstr) {
-	    if((k & 7) == 0) {
-	      if(k) pnl();
-	      gen(WORD_, 0);
-	      }
-	    else pchar(',');
-	    pchar('_');
-	    pdec(pbase);
-	    pchar('_');
-	    pdec(k);
-	    ++k;
-	    }
-	  pnl();
 	  }
 
 	/*
