@@ -139,22 +139,32 @@ $LIB_INPUTS = @($RUNTIME_OBJECTS) + @($RUNTIME_LIBRARIES) + @($RUNTIME_INDEXES)
 # This deliberately copies matching .NDX files alongside .LIB files.
 $LIB_COPY_PATTERNS = @("*.R99", "*.LIB", "*.NDX")
 
+# One row per overlay module.  Page is the physical page (1-15) behind the
+# module's AORG segment; Id is its overlay ID; Anchors are DREL export:alias
+# pairs.  The DREL descriptor and the LINK99 -P arguments are generated from
+# this table, and the post-link layout check compares the runtime table
+# (OVLTABLE.INC) against where the pages actually land in SMALLC99.EXE.
+# Pages are numbered PER SEGMENT: page 2 at >8000 and page 2 at >9000 are
+# different RAM.  The build prints the free page numbers for each segment.
 $OVERLAYS = @(
-    @{ Name="CC_DECL";   Page=2;  Descriptor="CC_DECL.R99=2,3,dodeclare:D_DODECL" }
-    @{ Name="CC_PREP";   Page=9;  Descriptor="CC_PREP.R99=9,4,preprocess:P_PREP,dodefine:P_DEFINE,doinclude:P_INCLUDE,doasm:P_DOASM" }
-    @{ Name="CC_MACS";   Page=10; Descriptor="CC_MACS.R99=10,4,putmac:-" }
-    @{ Name="CC_STMT";   Page=3;  Descriptor="CC_STMT.R99=3,2,statement:S_STMT" }
-    @{ Name="CC_STMT_R"; Page=14; Descriptor="CC_STMT_R.R99=14,2,doexpr:-" }
-    @{ Name="CC_EXPR_A"; Page=4;  Descriptor="CC_EXPR_A.R99=4,1,expression:E_EXPR,constexpr:E_CEXPR" }
-    @{ Name="CC_EXPR_B"; Page=5;  Descriptor="CC_EXPR_B.R99=5,1,test:E_TEST" }
-    @{ Name="CC_DFUN";   Page=6;  Descriptor="CC_DFUN.R99=6,5,dofunction:D_DOFN" }
-    @{ Name="CC_EXPR_C"; Page=7;  Descriptor="CC_EXPR_C.R99=7,1,level1:-" }
-    @{ Name="CC_EXPR_D"; Page=8;  Descriptor="CC_EXPR_D.R99=8,1,primary:-" }
-    @{ Name="CC_CG99";   Page=11; Descriptor="CC_CG99.R99=11,6,ccout:P_CCOUT" }
-    @{ Name="CC_CG99T";  Page=13; Descriptor="CC_CG99T.R99=13,6,setcodes:P_SETCODES" }
-    @{ Name="CC_CL99";   Page=12; Descriptor="CC_CL99.R99=12,7,getoptions:P_GETOPTS,errrep:P_ERRREP" }
-    @{ Name="CC_STRD";   Page=15; Descriptor="CC_STRD.R99=15,8,dostruct:T_STRUCT" }   # structs phase 1: struct/union declarations
+    @{ Name="CC_DECL";    Page=2;  Id=3; Anchors="dodeclare:D_DODECL" }
+    @{ Name="CC_PREP";    Page=9;  Id=4; Anchors="preprocess:P_PREP,dodefine:P_DEFINE,doinclude:P_INCLUDE,doasm:P_DOASM" }
+    @{ Name="CC_MACS";    Page=10; Id=4; Anchors="putmac:-" }
+    @{ Name="CC_STMT";    Page=3;  Id=2; Anchors="statement:S_STMT" }
+    @{ Name="CC_STMT_R";  Page=14; Id=2; Anchors="doexpr:-" }
+    @{ Name="CC_EXPR_A";  Page=4;  Id=1; Anchors="expression:E_EXPR,constexpr:E_CEXPR" }
+    @{ Name="CC_EXPR_B";  Page=5;  Id=1; Anchors="test:E_TEST" }
+    @{ Name="CC_DFUN";    Page=6;  Id=5; Anchors="dofunction:D_DOFN" }
+    @{ Name="CC_EXPR_C";  Page=7;  Id=1; Anchors="level1:-" }
+    @{ Name="CC_EXPR_D";  Page=8;  Id=1; Anchors="primary:-" }
+    @{ Name="CC_CG99";    Page=11; Id=6; Anchors="ccout:P_CCOUT" }
+    @{ Name="CC_CG99T";   Page=13; Id=6; Anchors="setcodes:P_SETCODES" }
+    @{ Name="CC_CL99";    Page=12; Id=7; Anchors="getoptions:P_GETOPTS,errrep:P_ERRREP" }
+    @{ Name="CC_STRD";    Page=15; Id=8; Anchors="dostruct:T_STRUCT" }   # structs phase 1: struct/union declarations
 )
+foreach ($overlay in $OVERLAYS) {
+    $overlay.Descriptor = "{0}.R99={1},{2},{3}" -f $overlay.Name,$overlay.Page,$overlay.Id,$overlay.Anchors
+}
 
 # Overlay ownership contract.  Framed overlay dispatch saves/restores only
 # CUR_WINA_ID, and CUR_WINA_ID is defined by the overlay mapped into virtual
@@ -568,32 +578,8 @@ foreach ($anchor in @("P_CCOUT","P_SETCODES","P_GETOPTS")) {
 }
 $tableText = Get-Content -LiteralPath ".\OVLTABLE.INC" -Raw
 
-# DREL 4.0 currently emits only the first page for OVL_STMT when the
-# second physical page is 14, even though LINK99 accepts -P14 and the
-# target mapper supports pages 0..15.  CC_STMT_R is AORG >9000 and is
-# linked on physical page 14, so make the generated runtime table match
-# the actual link layout.  If DREL is later fixed and emits both pages,
-# this block leaves the row unchanged.
-if ($tableText -notmatch 'WORD\s+8,3,9,14,0,0,0,0,0,0\s*;ID 2') {
-    $oldStmtRow = '(?im)^\s*WORD\s+8,3,0,0,0,0,0,0,0,0\s*;ID 2[^\r\n]*$'
-    if ($tableText -notmatch $oldStmtRow) {
-        throw "*** BUILD FAILED: unexpected DREL OVL_STMT ID 2 row"
-    }
-    $tableText = [regex]::Replace(
-        $tableText,
-        $oldStmtRow,
-        "`tWORD`t8,3,9,14,0,0,0,0,0,0`t;ID 2 (2 pages)",
-        [Text.RegularExpressions.RegexOptions]::IgnoreCase -bor [Text.RegularExpressions.RegexOptions]::Multiline
-    )
-    [IO.File]::WriteAllText((Resolve-Path ".\OVLTABLE.INC"), $tableText, [Text.Encoding]::ASCII)
-}
-
-$tableText = Get-Content -LiteralPath ".\OVLTABLE.INC" -Raw
-$stmtRow = [regex]::Match($tableText, '(?im)^\s*WORD\s+8,3[^\r\n]*;ID 2[^\r\n]*$').Value
-Write-Output ("OVL_STMT final row: " + $stmtRow)
-if ($tableText -notmatch 'WORD\s+8,3,9,14,0,0,0,0,0,0\s*;ID 2') {
-    throw "*** BUILD FAILED: OVL_STMT ID 2 is not mapped as >8000/page3 + >9000/page14"
-}
+# OVLTABLE.INC rows are checked against the linked image after LINK99
+# (see "Overlay layout"), so no row is hard-coded here.
 
 # HARD INVARIANT: every normal/nestable overlay must own segment 8.
 # Parse OVLTABLE line-by-line.  This is intentionally simple and bounded:
@@ -631,15 +617,22 @@ foreach ($id in $overlayIds) {
 }
 Write-Output "Overlay ownership audit: every non-exempt overlay begins at segment 8 and owns it exactly once."
 
-# CGEN is the regression that established this invariant.  Keep both its
-# physical pages and its virtual owner slots exact.
-$cgenWords = Get-OverlayRowWords -TableLines $tableLines -Id 6
-$expectedCgen = @(8,11,9,13,0,0,0,0,0,0)
-for ($i = 0; $i -lt 10; $i++) {
-    if ($cgenWords[$i] -ne $expectedCgen[$i]) {
-        throw "*** BUILD FAILED: OVL_CGEN ID 6 must be exactly 8,11,9,13,0,0,0,0,0,0"
+# Every (segment, page) slot may hold only one overlay page.  DREL has already
+# worked out each overlay's segments from its AORG, so check before linking.
+$slotOwner = @{}
+foreach ($id in $overlayIds) {
+    if ($id -eq 0) { continue }
+    $words = Get-OverlayRowWords -TableLines $tableLines -Id $id
+    foreach ($index in @(0,2,4,6,8)) {
+        if ($words[$index] -eq 0) { continue }
+        $key = "{0},{1}" -f $words[$index],$words[$index + 1]
+        if ($slotOwner.ContainsKey($key)) {
+            throw ("*** BUILD FAILED: overlay IDs {0} and {1} both use page {2} at >{3:X1}000 - give one of them a free page" -f $slotOwner[$key],$id,$words[$index + 1],$words[$index])
+        }
+        $slotOwner[$key] = $id
     }
 }
+Write-Output "Page slot audit: no segment/page is used by two overlays."
 
 # The exported CGEN entry points must agree with the table: ccout in segment 8,
 # templates/setcodes in segment 9.  This catches an AORG regression even if a
@@ -652,11 +645,8 @@ if ($ccoutAddr -lt 0x8000 -or $ccoutAddr -gt 0x8FFF) {
 if ($setcodesAddr -lt 0x9000 -or $setcodesAddr -gt 0x9FFF) {
     throw ("*** BUILD FAILED: P_SETCODES is >{0:X4}; expected >9000..>9FFF" -f $setcodesAddr)
 }
-Write-Output ("CGEN ownership audit: ID 6 = 8,11,9,13; P_CCOUT=>{0:X4}; P_SETCODES=>{1:X4}." -f $ccoutAddr,$setcodesAddr)
+Write-Output ("CGEN anchor audit: P_CCOUT=>{0:X4} (segment 8); P_SETCODES=>{1:X4} (segment 9)." -f $ccoutAddr,$setcodesAddr)
 
-if ($tableText -notmatch 'WORD\s+10,12,0,0,0,0,0,0,0,0\s*;ID 7') {
-    throw "*** BUILD FAILED: overlay ID 7 is not mapped to page 12"
-}
 
 foreach ($name in @("SMALLC99","CC_PORT","CLISTUB","CC_CD99","CC_RESIDENT","CC_SCAN_SYM","CC_DATA","OVLMGR","OVLSTUBS","SPYOUT","CC_STRU")) {
     Assemble-R99 $name
@@ -728,6 +718,109 @@ foreach ($overlay in $OVERLAYS) {
     }
 }
 Require-File ".\SMALLC99.EXE"
+
+# -------------------------------------------------------
+# Overlay layout: read back from SMALLC99.EXE
+# -------------------------------------------------------
+# The paged EXE is a chain of blocks: next offset, page, load address, size
+# (big-endian words).  This is exactly what the shell loader maps, so the
+# map below is where every overlay page really lands.
+$MIN_RESIDENT_GAP = 1800    # CC_DATA: ~1700 bytes of file buffers above the resident image
+$PAGE_LIMIT = 0x0FC0        # LINK99 chain-safe bytes per page (same limit as "Overlay budgets")
+
+$exeBytes = [IO.File]::ReadAllBytes((Resolve-Path ".\SMALLC99.EXE"))
+$blocks = @()
+$off = 0
+while ($true) {
+    if ($off + 8 -gt $exeBytes.Length) { throw "*** BUILD FAILED: SMALLC99.EXE block chain runs past the end of the file" }
+    $next  = ([int]$exeBytes[$off]     * 256) + $exeBytes[$off + 1]
+    $page  = ([int]$exeBytes[$off + 2] * 256) + $exeBytes[$off + 3]
+    $start = ([int]$exeBytes[$off + 4] * 256) + $exeBytes[$off + 5]
+    $size  = ([int]$exeBytes[$off + 6] * 256) + $exeBytes[$off + 7]
+    $blocks += ,@($page, $start, $size)
+    if ($next -eq 0 -or ($off + $next) -ge $exeBytes.Length) { break }
+    $off += $next
+}
+
+# Resident image: the leading page-0 blocks.
+$bi = 0
+$residentLo = 0xFFFF
+$residentHi = 0
+while ($bi -lt $blocks.Count -and $blocks[$bi][0] -eq 0) {
+    if ($blocks[$bi][1] -lt $residentLo) { $residentLo = $blocks[$bi][1] }
+    if ($blocks[$bi][1] + $blocks[$bi][2] -gt $residentHi) { $residentHi = $blocks[$bi][1] + $blocks[$bi][2] }
+    $bi++
+}
+
+# Overlay modules follow in link order (the $OVERLAYS order).
+$moduleSize = @{}
+foreach ($overlay in $OVERLAYS) {
+    $pattern = "MODULE\s+" + [regex]::Escape($overlay.Name) + "\s+size=([0-9A-F]+)"
+    $match = [regex]::Match($overlayLint, $pattern, [Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    $moduleSize[$overlay.Name] = [Convert]::ToInt32($match.Groups[1].Value, 16)
+}
+$placed = @()
+foreach ($overlay in $OVERLAYS) {
+    if ($bi -ge $blocks.Count -or $blocks[$bi][0] -ne $overlay.Page) {
+        throw "*** BUILD FAILED: SMALLC99.EXE has no page $($overlay.Page) blocks for $($overlay.Name)"
+    }
+    $seg = $blocks[$bi][1] -shr 12
+    $lo = $blocks[$bi][1]
+    while ($bi -lt $blocks.Count -and $blocks[$bi][0] -eq $overlay.Page -and ($blocks[$bi][1] -shr 12) -eq $seg) { $bi++ }
+    if ($seg -lt 8 -or $seg -gt 11) {
+        throw ("*** BUILD FAILED: {0} loads at >{1:X4}, outside the overlay window >8000->BFFF" -f $overlay.Name,$lo)
+    }
+    if ($overlay.Page -lt 1 -or $overlay.Page -gt 15) {
+        throw "*** BUILD FAILED: $($overlay.Name) is on page $($overlay.Page); overlay pages are 1-15"
+    }
+    $placed += New-Object PSObject -Property @{ Name=$overlay.Name; Id=$overlay.Id; Seg=$seg; Page=$overlay.Page; Lo=$lo; Used=$moduleSize[$overlay.Name] }
+}
+if ($bi -ne $blocks.Count) {
+    throw "*** BUILD FAILED: SMALLC99.EXE has blocks that do not belong to any listed overlay"
+}
+
+# No segment/page slot may be used twice.
+$slots = @{}
+foreach ($p in $placed) {
+    $key = "{0},{1}" -f $p.Seg,$p.Page
+    if ($slots.ContainsKey($key)) {
+        throw ("*** BUILD FAILED: {0} and {1} both use page {2} at >{3:X1}000" -f $slots[$key],$p.Name,$p.Page,$p.Seg)
+    }
+    $slots[$key] = $p.Name
+}
+
+# The runtime table must map each overlay ID to exactly the pages it was linked on.
+$tableLines = Get-Content -LiteralPath ".\OVLTABLE.INC"
+$ids = @($placed | ForEach-Object { $_.Id } | Sort-Object -Unique)
+foreach ($id in $ids) {
+    $expected = @()
+    foreach ($p in ($placed | Where-Object { $_.Id -eq $id } | Sort-Object Seg)) { $expected += $p.Seg; $expected += $p.Page }
+    while ($expected.Count -lt 10) { $expected += 0 }
+    $actual = Get-OverlayRowWords -TableLines $tableLines -Id $id
+    if (($actual -join ',') -ne ($expected -join ',')) {
+        throw ("*** BUILD FAILED: OVLTABLE.INC ID {0} is {1} but the overlay was linked as {2}" -f $id,($actual -join ','),($expected -join ','))
+    }
+}
+
+Write-Output "`n================================================"
+Write-Output "Overlay layout (as loaded from SMALLC99.EXE)"
+Write-Output "================================================"
+foreach ($seg in 8..11) {
+    Write-Output ("Segment >{0:X1}000" -f $seg)
+    $inSeg = @($placed | Where-Object { $_.Seg -eq $seg } | Sort-Object Page)
+    foreach ($p in $inSeg) {
+        Write-Output ("  page {0,2}  {1,-10} ID {2}  used {3,4}  free {4,4}" -f $p.Page,$p.Name,$p.Id,$p.Used,($PAGE_LIMIT - $p.Used))
+    }
+    $freePages = @()
+    foreach ($pg in 1..15) { if (-not $slots.ContainsKey(("{0},{1}" -f $seg,$pg))) { $freePages += $pg } }
+    Write-Output ("  free pages: " + ($freePages -join ' '))
+}
+$residentGap = 0x8000 - $residentHi
+Write-Output ("Resident: >{0:X4}->{1:X4} ({2} bytes); gap to >8000: {3} bytes (minimum {4})" -f $residentLo,($residentHi - 1),($residentHi - $residentLo),$residentGap,$MIN_RESIDENT_GAP)
+Write-Output ("Overlay pages in use: {0} of 60; runtime table matches the linked layout for IDs {1}" -f $placed.Count,($ids -join ','))
+if ($residentGap -lt $MIN_RESIDENT_GAP) {
+    throw "*** BUILD FAILED: resident image leaves only $residentGap bytes below >8000 (minimum $MIN_RESIDENT_GAP)"
+}
 
 if (-not (Test-Path -LiteralPath $MONITOR_DIR -PathType Container)) {
     throw "*** BUILD FAILED: monitor destination does not exist: $MONITOR_DIR"
