@@ -1,4 +1,4 @@
-;* * *  Small-C/Plus Version 1.06a for the TMS 9900 - Cameron * * *
+;* * *  Small-C/Plus Version 1.06g for the TMS 9900 - Cameron * * *
 ;       Cain, Van Zandt, Hendrix, Yorston, Cameron
 ;          Original Z80  Version 21st April 1990       
 ;
@@ -7,6 +7,9 @@ R1	EQU 1
 R2	EQU 2
 R3	EQU 3
 R4	EQU 4
+R5	EQU 5
+R6	EQU 6
+R7	EQU 7
 R8	EQU 8
 SL	EQU 9
 R9	EQU 9
@@ -43,7 +46,7 @@ R11	EQU 11
 ;**     [15] MOD12                    level12  down("* / %",     13)
 ;**
 ;** op2[] differs from op[] only where signedness changes the p-code:
-;** the four comparisons and the three multiplicative operators.
+;** the four comparisons, unsigned right shift, and the three multiplicative operators.
 ;** down2() selects between them on the operand types.
 ;**
 ;** DO NOT REORDER EITHER TABLE. The indices are the level dispatch's
@@ -80,6 +83,7 @@ R11	EQU 11
 ;#define OR12     57
 ;#define SUB12    69
 ;#define XOR12    73
+;#define LSR12    74   /* logical shift right for unsigned operands */
 ;int op[16] = {          /* p-codes of signed binary operators */
 op:;  OR12,                         /* level5  */
 ;  XOR12,                        /* level6  */
@@ -97,10 +101,10 @@ op2:;  OR12,                         /* level5  */
 ;  AND12,                        /* level7  */
 ;  EQ12,   NE12,                 /* level8  */
 ;  LE12u,  GE12u, LT12u, GT12u,  /* level9  */
-;  ASR12,  ASL12,                /* level10 */
+;  LSR12,  ASL12,                /* level10: unsigned >> is logical */
 ;  ADD12,  SUB12,                /* level11 */
 ;  MUL12u, DIV12u, MOD12u        /* level12 */
-	WORD 57,73,3,20,55,44,23,48,36,7,6,1
+	WORD 57,73,3,20,55,44,23,48,36,74,6,1
 	WORD 69,53,17,50
 ;int opindex;            /* index of the operator nextop() matched */
 opindex:	BSS 2
@@ -110,8 +114,8 @@ opsize:	BSS 2
 usexpr:	WORD 1
 ;char quote[2];          /* one-character string, set up by ccinit */
 quote:	BSS 2
-;char symtab[3500];
-symtab:	BSS 3500
+;char symtab[3520];
+symtab:	BSS 3520
 ;char *glbptr;
 glbptr:	BSS 2
 ;char *locptr;
@@ -150,6 +154,8 @@ declared:	WORD -1
 ncmp:	BSS 2
 ;int swactive;
 swactive:	BSS 2
+;int stmtovlinit;       /* 0 until OVL_STMT page-2 state is initialised */
+stmtovlinit:	BSS 2
 ;/*
 ;** ==== M33: preprocessor state ====
 ;**
@@ -185,29 +191,59 @@ incunit:	BSS 2
 outunit:	BSS 2
 ;int oldseg;            /* M37a current 8086 output segment */
 oldseg:	BSS 2
-;char srcbuf[128];
-srcbuf:	BSS 128
+;/* srcbuf[128] removed: it had no references anywhere in the active build. */
 ;char litq[256];
 litq:	BSS 256
+;/*
+;** ==== Structures (phase 1) ====
+;** tagtab: NUMTAGS x TAGSIZ   name[16], size (2, low byte first),
+;**                            first member (1), member count (1)
+;** memtab: NUMMEMB x SYMMAX   member records in global-symbol format:
+;**                            IDENT TYPE CLASS(=owner tag) SIZE OFFSET NAME
+;** A struct type code is (tag index << 2) | STRUCTBIT; see elsize().
+;*/
+;/*
+;** Sized to leave the run-time heap (FREEMEM..>8000) at least ~1,800 bytes:
+;** the compiler needs ~1,700 for its three file buffers when an #include is
+;** open, and silently drops the include below that.
+;*/
+;char tagtab[320];       /* NUMTAGS 16 x TAGSIZ 20 */
+tagtab:	BSS 320
+;char memtab[920];       /* NUMMEMB 40 x SYMMAX 23 */
+memtab:	BSS 920
+;int ntags;
+ntags:	BSS 2
+;int nmembs;
+nmembs:	BSS 2
+;int errcnt;             /* errors reported (error(), CC_CL99 errrep) */
+errcnt:	BSS 2
+;int lineno;             /* primary-source line number (CC_PREP inline) */
+lineno:	BSS 2
 	ENT swactive
 	ENT usexpr
+	ENT errcnt
 	ENT ccode
 	ENT cptr
 	ENT ncmp
 	ENT outunit
 	ENT symtab
+	ENT memtab
 	ENT litq
 	ENT declared
+	ENT lineno
+	ENT stmtovlinit
 	ENT opindex
 	ENT cptr2
 	ENT cptr3
 	ENT pptr
 	ENT locptr
+	ENT nmembs
+	ENT tagtab
 	ENT oldseg
 	ENT op2
 	ENT incunit
+	ENT ntags
 	ENT op
-	ENT srcbuf
 	ENT opsize
 	ENT skiplevel
 	ENT quote

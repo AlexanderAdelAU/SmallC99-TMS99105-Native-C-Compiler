@@ -1,0 +1,2118 @@
+;* * *  Small-C/Plus Version 1.06g for the TMS 9900 - Cameron * * *
+;       Cain, Van Zandt, Hendrix, Yorston, Cameron
+;          Original Z80  Version 21st April 1990       
+;
+R0	EQU 0
+R1	EQU 1
+R2	EQU 2
+R3	EQU 3
+R4	EQU 4
+R5	EQU 5
+R6	EQU 6
+R7	EQU 7
+R8	EQU 8
+SL	EQU 9
+R9	EQU 9
+SP	EQU 10
+WP	EQU 13
+R11	EQU 11
+	DXOP CALL,6
+	DXOP RET,7
+	DXOP WHEX,10
+	DXOP WRITE,12    ;WRITE CHAR IN MSB 
+	DXOP	MESG,14
+	DXOP DEBUG,15    ;TRACE THE PRECEDING INSTRUCTION, PC,ST and REGISTERS 
+
+;-------- START MODULE -----------
+	NAM CC_STRD
+;#asm
+	AORG 8000H
+;	/*
+;	** CC_STRD.C
+;	**
+;	** Struct-declaration overlay (OVL_STRD, ID 8, physical page 15,
+;	** segment 8).  Parses  struct|union tag [{ member-list }]  and
+;	** returns the struct's type code.  Reached ONLY through the framed
+;	** trampoline R_STRUCT (OVLSTUBS), from DECL (globals) and, in the
+;	** next step, STMT (locals) and DFUN (parameters).  Its own page
+;	** because Small-C made it ~2.9K: it overflowed DECL's page.
+;	** Entry point dostruct -> T_STRUCT (generated in OVLADDR.INC).
+;	*/
+;	#define BPW       2
+;	#define IDENT     0
+;	#define TYPE      1
+;	#define CLASS     2
+;	#define SIZE      3
+;	#define OFFSET    5
+;	#define LABEL     0
+;	#define VARIABLE  1
+;	#define ARRAY     2
+;	#define POINTER   3
+;	#define FUNCTION  4
+;	#define CHR       4
+;	#define INT       8
+;	#define UCHR      5
+;	#define UINT      9
+;	#define AUTOMATIC 1
+;	#define STATIC    2
+;	#define EXTERNAL  3
+;	#define AUTOEXT   4
+;	#define DATASEG   1
+;	#define BYTE_    10
+;	#define BYTEr0   12
+;	#define WORD_    37
+;	#define WORDr0   39
+;	#define LITMAX   256
+;	#define NAMESIZE  16
+;	extern int eof;
+;	/*
+;	** ==== Structures (phase 1) ====
+;	** A struct type code is (tag index << 2) | STRUCTBIT, so it travels
+;	** through the compiler like CHR and INT; elsize() (CC_STRU, resident)
+;	** gives its size.  Tags and members live in CC_DATA:
+;	**   tagtab  NUMTAGS x TAGSIZ   name[16] size[2] first[1] count[1]
+;	**   memtab  NUMMEMB x SYMMAX   IDENT TYPE CLASS(=tag) SIZE OFFSET NAME
+;	** Layout (TMS9900): char members at any offset, everything else at
+;	** an even one; sizes rounded up to even.  A union's members are all
+;	** at offset 0 and its size is the largest member.
+;	*/
+;	extern char tagtab[];
+;	extern char memtab[];
+;	extern int ntags;
+;	extern int nmembs;
+;	#define STRUCTBIT 2
+;	#define TAGSIZ   20
+;	#define TAGSZ    16
+;	#define TAGFIRST 18
+;	#define TAGCNT   19
+;	#define NUMTAGS  16
+;	#define NUMMEMB  40
+;	#define SYMMAX   23
+;	#define NAMEMAX  15
+;	#define NAME      7
+;	/*
+;	** struct|union tag [{ member-list }] -> type code.  Called with the
+;	** keyword already matched.  The tag is registered BEFORE its body
+;	** is parsed, so a member may point to the struct being defined.
+;	** outer: 1 at declaration level; 0 for a member's type, where a
+;	** body would interleave two structs' members, so it is refused.
+;	*/
+;	dostruct(isunion, outer) int isunion, outer; {
+	EVEN
+dostruct:
+;modstk(newsp,save)
+;	  int tag;
+;	  char tname[NAMESIZE];
+;	  if(isunion == 2) return mdrows(outer);   /* [a][b]... after the first */
+;modstk(newsp,save)
+	AI SP,-18
+;getloc(sym, off)
+	MOV @22(SP),R4 ;optimised load
+	MOV R4,R3 ;optimised push/pop
+	LI R4,2
+;_cceq
+	C R3,R4 ;optimised
+	JEQ $+6
+	B @cc2
+;getloc(sym, off)
+	MOV @20(SP),R4 ;optimised load
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @mdrows
+;modstk(newsp,save)
+	INCT SP
+;modstk(newsp,save)
+	AI SP,18
+	RET
+;	  if(symname(tname) == 0) {
+cc2:
+;getloc(sym, off)
+	MOV SP,R4
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @symname
+;modstk(newsp,save)
+	INCT SP
+	MOV R4,R4
+	JEQ $+6
+	B @cc3
+;	    error("need struct tag");
+;modstk(newsp,save)
+;constant(lval)
+	LI R4,cc1+0
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @error
+;modstk(newsp,save)
+	INCT SP
+;	    return INT;
+	LI R4,8
+;modstk(newsp,save)
+	AI SP,18
+	RET
+;	    }
+;	  if((tag = dfindtag(tname)) == 0) {
+cc3:
+;getloc(sym, off)
+	LI R4,16
+	A SP,R4
+	DECT SP
+	MOV R4,*SP
+;getloc(sym, off)
+	LI R4,2
+	A SP,R4
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @dfindtag
+;modstk(newsp,save)
+	INCT SP
+	MOV *SP+,R3
+;putstk - int
+	MOV R4,*R3
+	MOV R4,R4
+	JEQ $+6
+	B @cc4
+;	    if(ntags >= NUMTAGS) {
+;modstk(newsp,save)
+;getmem(sym)
+	MOV @ntags,R4
+	MOV R4,R3 ;optimised push/pop
+	LI R4,16
+;_ccge
+	C R3,R4 ;optimised
+	JGT $+8
+	JEQ $+6
+	B @cc5
+;	      error("too many struct tags");
+;modstk(newsp,save)
+;constant(lval)
+	LI R4,cc1+16
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @error
+;modstk(newsp,save)
+	INCT SP
+;	      return INT;
+	LI R4,8
+;modstk(newsp,save)
+	AI SP,18
+	RET
+;	      }
+;	    dnewtag(tname);
+cc5:
+;getloc(sym, off)
+	MOV SP,R4
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @dnewtag
+;modstk(newsp,save)
+	INCT SP
+;	    tag = ntags;
+;getloc(sym, off)
+	LI R4,16
+	A SP,R4
+	MOV R4,R3 ;optimised push/pop
+	MOV @ntags,R4
+;putstk - int
+	MOV R4,*R3
+;	    }
+;modstk(newsp,save)
+;	  --tag;
+cc4:
+;getloc(sym, off)
+	LI R4,16
+	A SP,R4
+	MOV R4,R5 ;optimised expr save
+;indirect ccgint
+	MOV *R4,R4
+;	dec()
+	DEC R4
+	MOV R5,R3 ;optimised expr restore
+;putstk - int
+	MOV R4,*R3
+;	  if(match("{")) {
+;constant(lval)
+	LI R4,cc1+37
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @match
+;modstk(newsp,save)
+	INCT SP
+	MOV R4,R4
+	JNE $+6
+	B @cc6
+;	    if(outer) dobody(tag, isunion);
+;modstk(newsp,save)
+;getloc(sym, off)
+	MOV @20(SP),R4 ;optimised load
+	MOV R4,R4
+	JNE $+6
+	B @cc7
+;getloc(sym, off)
+	MOV @16(SP),R4 ;optimised load
+	DECT SP
+	MOV R4,*SP
+;getloc(sym, off)
+	MOV @24(SP),R4 ;optimised load
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @dobody
+;modstk(newsp,save)
+	AI SP,4
+;	    else error("define struct outside");
+;jump(label)
+	B @cc8
+cc7:
+;constant(lval)
+	LI R4,cc1+39
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @error
+;modstk(newsp,save)
+	INCT SP
+cc8:
+;	    }
+;modstk(newsp,save)
+;	  return ((tag << 2) | STRUCTBIT);
+cc6:
+;getloc(sym, off)
+	MOV @16(SP),R4 ;optimised load
+	MOV R4,R3 ;optimised push/pop
+	LI R4,2
+	BL @_ccasl##
+	MOV R4,R3 ;optimised push/pop
+	LI R4,2
+;zor()
+	SOC R3,R4
+;modstk(newsp,save)
+	AI SP,18
+	RET
+;	  }
+cc1:	BYTE 110,101,101,100,32,115,116,114,117,99,116,32
+	BYTE 116,97,103,0,116,111,111,32,109,97,110,121
+	BYTE 32,115,116,114,117,99,116,32,116,97,103,115
+	BYTE 0,123,0,100,101,102,105,110,101,32,115,116
+	BYTE 114,117,99,116,32,111,117,116,115,105,100,101
+	BYTE 0
+	EVEN
+;	dfindtag(sname) char *sname; {   /* tag index + 1, or 0 */
+	EVEN
+dfindtag:
+;	  int i;
+;	  i = 0;
+;modstk(newsp,save)
+	DECT SP
+	CLR R4
+;puttos()
+	MOV R4,*SP
+;	  while(i < ntags) {
+cc10:
+;getloc(sym, off)
+	MOV *SP,R4 ;optimised load
+	MOV R4,R3 ;optimised push/pop
+	MOV @ntags,R4
+;_cclt
+	C R3,R4 ;optimised
+	JLT $+6
+	B @cc11
+;	    if(astreq(sname, tagtab + i * TAGSIZ, NAMEMAX)) return (i + 1);
+;modstk(newsp,save)
+;getloc(sym, off)
+	MOV @4(SP),R4 ;optimised load
+	DECT SP
+	MOV R4,*SP
+;address(ptr)
+	LI R4,tagtab
+	DECT SP
+	MOV R4,*SP
+;getloc(sym, off)
+	MOV @4(SP),R4 ;optimised load
+	MOV R4,R3 ;optimised push/pop
+	LI R4,20
+	BL @_ccmult##
+	MOV *SP+,R3
+;	zadd()
+	A R3,R4
+	DECT SP
+	MOV R4,*SP
+	LI R4,15
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @astreq
+;modstk(newsp,save)
+	AI SP,6
+	MOV R4,R4
+	JNE $+6
+	B @cc12
+;getloc(sym, off)
+	MOV *SP,R4 ;optimised load
+;inc()
+	INC R4
+;modstk(newsp,save)
+	INCT SP
+	RET
+;	    ++i;
+cc12:
+;getloc(sym, off)
+	MOV SP,R4
+	MOV R4,R5 ;optimised expr save
+;indirect ccgint
+	MOV *R4,R4
+;inc()
+	INC R4
+	MOV R5,R3 ;optimised expr restore
+;putstk - int
+	MOV R4,*R3
+;	    }
+;modstk(newsp,save)
+;jump(label)
+	B @cc10
+cc11:
+;	  return 0;
+	CLR R4
+;modstk(newsp,save)
+	INCT SP
+	RET
+;	  }
+;	dnewtag(sname) char *sname; {
+	EVEN
+dnewtag:
+;	  char *t;
+;	  int k;
+;	  t = tagtab + ntags * TAGSIZ;
+;modstk(newsp,save)
+	AI SP,-4
+;address(ptr)
+	LI R4,tagtab
+	DECT SP
+	MOV R4,*SP
+;getmem(sym)
+	MOV @ntags,R4
+	MOV R4,R3 ;optimised push/pop
+	LI R4,20
+	BL @_ccmult##
+	MOV *SP+,R3
+;	zadd()
+	A R3,R4
+;put2tos()
+	MOV R4,@2(SP)
+;	  k = 0;
+	CLR R4
+;puttos()
+	MOV R4,*SP
+;	  while(k < TAGSIZ) t[k++] = 0;
+cc14:
+;getloc(sym, off)
+	MOV *SP,R4 ;optimised load
+	MOV R4,R3 ;optimised push/pop
+	LI R4,20
+;_cclt
+	C R3,R4 ;optimised
+	JLT $+6
+	B @cc15
+;getloc(sym, off)
+	MOV @2(SP),R4 ;optimised load
+	DECT SP
+	MOV R4,*SP
+;getloc(sym, off)
+	LI R4,2
+	A SP,R4
+	MOV R4,R5 ;optimised expr save
+;indirect ccgint
+	MOV *R4,R4
+;inc()
+	INC R4
+	MOV R5,R3 ;optimised expr restore
+;putstk - int
+	MOV R4,*R3
+;	dec()
+	DEC R4
+;scale(type,tag)
+	MOV *SP+,R3
+;	zadd()
+	A R3,R4
+	MOV R4,R3 ;optimised push/pop
+	CLR R4
+;putstk - char
+	MOVB @2*R4+1(WP),*R3
+;jump(label)
+	B @cc14
+cc15:
+;	  k = 0;
+	CLR R4
+;puttos()
+	MOV R4,*SP
+;	  while(an(*sname) && k < NAMEMAX) t[k++] = *sname++;
+cc16:
+;getloc(sym, off)
+	MOV @6(SP),R4 ;optimised load
+;indirect ccgchar
+	MOVB *R4,R4
+	SRA R4,8
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @an
+;modstk(newsp,save)
+	INCT SP
+	MOV R4,R4
+	JNE $+6
+	B @cc18
+;getloc(sym, off)
+	MOV *SP,R4 ;optimised load
+	MOV R4,R3 ;optimised push/pop
+	LI R4,15
+;_cclt
+	C R3,R4 ;optimised
+	JLT $+6
+	B @cc18
+	LI R4,1
+;jump(label)
+	B @cc19
+cc18:
+	CLR R4
+cc19:
+	MOV R4,R4
+	JNE $+6
+	B @cc17
+;getloc(sym, off)
+	MOV @2(SP),R4 ;optimised load
+	DECT SP
+	MOV R4,*SP
+;getloc(sym, off)
+	LI R4,2
+	A SP,R4
+	MOV R4,R5 ;optimised expr save
+;indirect ccgint
+	MOV *R4,R4
+;inc()
+	INC R4
+	MOV R5,R3 ;optimised expr restore
+;putstk - int
+	MOV R4,*R3
+;	dec()
+	DEC R4
+;scale(type,tag)
+	MOV *SP+,R3
+;	zadd()
+	A R3,R4
+	DECT SP
+	MOV R4,*SP
+;getloc(sym, off)
+	LI R4,8
+	A SP,R4
+	MOV R4,R5 ;optimised expr save
+;indirect ccgint
+	MOV *R4,R4
+;inc()
+	INC R4
+	MOV R5,R3 ;optimised expr restore
+;putstk - int
+	MOV R4,*R3
+;	dec()
+	DEC R4
+;indirect ccgchar
+	MOVB *R4,R4
+	SRA R4,8
+	MOV *SP+,R3
+;putstk - char
+	MOVB @2*R4+1(WP),*R3
+;jump(label)
+	B @cc16
+cc17:
+;	  ++ntags;
+;getmem(sym)
+	MOV @ntags,R4
+;inc()
+	INC R4
+;putmem(sym)
+	MOV R4,@ntags
+;	  }
+;modstk(newsp,save)
+	AI SP,4
+;modstk(newsp,save)
+	RET
+;	/*
+;	** { member-list } for tag.  Members are appended to memtab
+;	** contiguously; tagtab records the first one and the count.
+;	*/
+;	dobody(tag, isunion) int tag, isunion; {
+	EVEN
+dobody:
+;	  char *t, *m, mname[NAMESIZE];
+;	  int mtype, mt, id, dim, msize, off, big;
+;	  t = tagtab + tag * TAGSIZ;
+;modstk(newsp,save)
+	AI SP,-34
+;getloc(sym, off)
+	LI R4,32
+	A SP,R4
+	DECT SP
+	MOV R4,*SP
+;address(ptr)
+	LI R4,tagtab
+	DECT SP
+	MOV R4,*SP
+;getloc(sym, off)
+	MOV @42(SP),R4 ;optimised load
+	MOV R4,R3 ;optimised push/pop
+	LI R4,20
+	BL @_ccmult##
+	MOV *SP+,R3
+;	zadd()
+	A R3,R4
+	MOV *SP+,R3
+;putstk - int
+	MOV R4,*R3
+;	  if(t[TAGCNT]) error("struct redefined");
+;getloc(sym, off)
+	MOV @32(SP),R4 ;optimised load
+;const2(val)
+	LI R3,19
+;	zadd()
+	A R3,R4
+;indirect ccgchar
+	MOVB *R4,R4
+	SRA R4,8
+	MOV R4,R4
+	JNE $+6
+	B @cc21
+;constant(lval)
+	LI R4,cc20+0
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @error
+;modstk(newsp,save)
+	INCT SP
+;	  t[TAGFIRST] = nmembs;
+cc21:
+;getloc(sym, off)
+	MOV @32(SP),R4 ;optimised load
+;const2(val)
+	LI R3,18
+;	zadd()
+	A R3,R4
+	MOV R4,R3 ;optimised push/pop
+	MOV @nmembs,R4
+;putstk - char
+	MOVB @2*R4+1(WP),*R3
+;	  t[TAGCNT] = 0;
+;getloc(sym, off)
+	MOV @32(SP),R4 ;optimised load
+;const2(val)
+	LI R3,19
+;	zadd()
+	A R3,R4
+	MOV R4,R3 ;optimised push/pop
+	CLR R4
+;putstk - char
+	MOVB @2*R4+1(WP),*R3
+;	  off = big = 0;
+	CLR R4
+;puttos()
+	MOV R4,*SP
+;put2tos()
+	MOV R4,@2(SP)
+;	  while(match("}") == 0) {
+cc22:
+;constant(lval)
+	LI R4,cc20+17
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @match
+;modstk(newsp,save)
+	INCT SP
+	MOV R4,R4
+	JEQ $+6
+	B @cc23
+;	    if(eof) return;
+;modstk(newsp,save)
+;getmem(sym)
+	MOV @eof,R4
+	MOV R4,R4
+	JNE $+6
+	B @cc24
+;modstk(newsp,save)
+	AI SP,34
+	RET
+;	    if(amatch("char", 4)) mtype = CHR;
+cc24:
+;constant(lval)
+	LI R4,cc20+19
+	DECT SP
+	MOV R4,*SP
+	LI R4,4
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @amatch
+;modstk(newsp,save)
+	AI SP,4
+	MOV R4,R4
+	JNE $+6
+	B @cc25
+;getloc(sym, off)
+	LI R4,12
+	A SP,R4
+	MOV R4,R3 ;optimised push/pop
+	LI R4,4
+;putstk - int
+	MOV R4,*R3
+;	    else if(amatch("unsigned", 8)) {
+;jump(label)
+	B @cc26
+cc25:
+;constant(lval)
+	LI R4,cc20+24
+	DECT SP
+	MOV R4,*SP
+	LI R4,8
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @amatch
+;modstk(newsp,save)
+	AI SP,4
+	MOV R4,R4
+	JNE $+6
+	B @cc27
+;	      if(amatch("char", 4)) mtype = UCHR;
+;modstk(newsp,save)
+;constant(lval)
+	LI R4,cc20+33
+	DECT SP
+	MOV R4,*SP
+	LI R4,4
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @amatch
+;modstk(newsp,save)
+	AI SP,4
+	MOV R4,R4
+	JNE $+6
+	B @cc28
+;getloc(sym, off)
+	LI R4,12
+	A SP,R4
+	MOV R4,R3 ;optimised push/pop
+	LI R4,5
+;putstk - int
+	MOV R4,*R3
+;	      else {
+;jump(label)
+	B @cc29
+cc28:
+;	        amatch("int", 3);
+;modstk(newsp,save)
+;constant(lval)
+	LI R4,cc20+38
+	DECT SP
+	MOV R4,*SP
+	LI R4,3
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @amatch
+;modstk(newsp,save)
+	AI SP,4
+;	        mtype = UINT;
+;getloc(sym, off)
+	LI R4,12
+	A SP,R4
+	MOV R4,R3 ;optimised push/pop
+	LI R4,9
+;putstk - int
+	MOV R4,*R3
+;	        }
+;modstk(newsp,save)
+cc29:
+;	      }
+;modstk(newsp,save)
+;	    else if(amatch("int", 3)) mtype = INT;
+;jump(label)
+	B @cc30
+cc27:
+;constant(lval)
+	LI R4,cc20+42
+	DECT SP
+	MOV R4,*SP
+	LI R4,3
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @amatch
+;modstk(newsp,save)
+	AI SP,4
+	MOV R4,R4
+	JNE $+6
+	B @cc31
+;getloc(sym, off)
+	LI R4,12
+	A SP,R4
+	MOV R4,R3 ;optimised push/pop
+	LI R4,8
+;putstk - int
+	MOV R4,*R3
+;	    else if(amatch("struct", 6)) mtype = dostruct(0, 0);
+;jump(label)
+	B @cc32
+cc31:
+;constant(lval)
+	LI R4,cc20+46
+	DECT SP
+	MOV R4,*SP
+	LI R4,6
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @amatch
+;modstk(newsp,save)
+	AI SP,4
+	MOV R4,R4
+	JNE $+6
+	B @cc33
+;getloc(sym, off)
+	LI R4,12
+	A SP,R4
+	DECT SP
+	MOV R4,*SP
+	CLR R4
+	DECT SP
+	MOV R4,*SP
+	CLR R4
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @dostruct
+;modstk(newsp,save)
+	AI SP,4
+	MOV *SP+,R3
+;putstk - int
+	MOV R4,*R3
+;	    else if(amatch("union", 5)) mtype = dostruct(1, 0);
+;jump(label)
+	B @cc34
+cc33:
+;constant(lval)
+	LI R4,cc20+53
+	DECT SP
+	MOV R4,*SP
+	LI R4,5
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @amatch
+;modstk(newsp,save)
+	AI SP,4
+	MOV R4,R4
+	JNE $+6
+	B @cc35
+;getloc(sym, off)
+	LI R4,12
+	A SP,R4
+	DECT SP
+	MOV R4,*SP
+	LI R4,1
+	DECT SP
+	MOV R4,*SP
+	CLR R4
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @dostruct
+;modstk(newsp,save)
+	AI SP,4
+	MOV *SP+,R3
+;putstk - int
+	MOV R4,*R3
+;	    else {
+;jump(label)
+	B @cc36
+cc35:
+;	      error("need member type");
+;modstk(newsp,save)
+;constant(lval)
+	LI R4,cc20+59
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @error
+;modstk(newsp,save)
+	INCT SP
+;	      kill();
+;zcall()
+	CALL @kill
+;modstk(newsp,save)
+;	      continue;
+;modstk(newsp,save)
+;jump(label)
+	B @cc22
+;	      }
+;modstk(newsp,save)
+cc36:
+cc34:
+cc32:
+cc30:
+cc26:
+;	    while(1) {
+cc37:
+;	      if(endst()) break;
+;modstk(newsp,save)
+;zcall()
+	CALL @endst
+;modstk(newsp,save)
+	MOV R4,R4
+	JNE $+6
+	B @cc39
+;modstk(newsp,save)
+;jump(label)
+	B @cc38
+;	      mt = mtype;               /* per member: char *a, b; */
+cc39:
+;getloc(sym, off)
+	LI R4,10
+	A SP,R4
+	MOV R4,R5 ;optimised expr save
+;getloc(sym, off)
+	MOV @12(SP),R4 ;optimised load/expr
+	MOV R5,R3 ;optimised expr restore
+;putstk - int
+	MOV R4,*R3
+;	      if(match("*")) {
+;constant(lval)
+	LI R4,cc20+76
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @match
+;modstk(newsp,save)
+	INCT SP
+	MOV R4,R4
+	JNE $+6
+	B @cc40
+;	        id = POINTER;
+;modstk(newsp,save)
+;getloc(sym, off)
+	LI R4,8
+	A SP,R4
+	MOV R4,R3 ;optimised push/pop
+	LI R4,3
+;putstk - int
+	MOV R4,*R3
+;	        while(match("*")) mt = mt + 64;   /* pointer depth */
+cc41:
+;constant(lval)
+	LI R4,cc20+78
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @match
+;modstk(newsp,save)
+	INCT SP
+	MOV R4,R4
+	JNE $+6
+	B @cc42
+;getloc(sym, off)
+	LI R4,10
+	A SP,R4
+	MOV R4,R5 ;optimised expr save
+;getloc(sym, off)
+	MOV @10(SP),R4 ;optimised load/expr
+;const2(val)
+	LI R3,64
+;	zadd()
+	A R3,R4
+	MOV R5,R3 ;optimised expr restore
+;putstk - int
+	MOV R4,*R3
+;jump(label)
+	B @cc41
+cc42:
+;	        }
+;modstk(newsp,save)
+;	      else id = VARIABLE;
+;jump(label)
+	B @cc43
+cc40:
+;getloc(sym, off)
+	LI R4,8
+	A SP,R4
+	MOV R4,R3 ;optimised push/pop
+	LI R4,1
+;putstk - int
+	MOV R4,*R3
+cc43:
+;	      if(symname(mname) == 0) illname();
+;getloc(sym, off)
+	LI R4,14
+	A SP,R4
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @symname
+;modstk(newsp,save)
+	INCT SP
+	MOV R4,R4
+	JEQ $+6
+	B @cc44
+;zcall()
+	CALL @illname
+;modstk(newsp,save)
+;	      dim = 1;
+cc44:
+;getloc(sym, off)
+	LI R4,6
+	A SP,R4
+	MOV R4,R3 ;optimised push/pop
+	LI R4,1
+;putstk - int
+	MOV R4,*R3
+;	      if(match("[")) {
+;constant(lval)
+	LI R4,cc20+80
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @match
+;modstk(newsp,save)
+	INCT SP
+	MOV R4,R4
+	JNE $+6
+	B @cc45
+;	        if(id == POINTER) mt = mt + 64;   /* array of pointers */
+;modstk(newsp,save)
+;getloc(sym, off)
+	MOV @8(SP),R4 ;optimised load
+	MOV R4,R3 ;optimised push/pop
+	LI R4,3
+;_cceq
+	C R3,R4 ;optimised
+	JEQ $+6
+	B @cc46
+;getloc(sym, off)
+	LI R4,10
+	A SP,R4
+	MOV R4,R5 ;optimised expr save
+;getloc(sym, off)
+	MOV @10(SP),R4 ;optimised load/expr
+;const2(val)
+	LI R3,64
+;	zadd()
+	A R3,R4
+	MOV R5,R3 ;optimised expr restore
+;putstk - int
+	MOV R4,*R3
+;	        id  = ARRAY;
+cc46:
+;getloc(sym, off)
+	LI R4,8
+	A SP,R4
+	MOV R4,R3 ;optimised push/pop
+	LI R4,2
+;putstk - int
+	MOV R4,*R3
+;	        dim = needsub();
+;getloc(sym, off)
+	LI R4,6
+	A SP,R4
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @needsub
+;modstk(newsp,save)
+	MOV *SP+,R3
+;putstk - int
+	MOV R4,*R3
+;	        mt  = mdrows(mt);           /* further [..]: rows */
+;getloc(sym, off)
+	LI R4,10
+	A SP,R4
+	DECT SP
+	MOV R4,*SP
+;getloc(sym, off)
+	MOV @12(SP),R4 ;optimised load
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @mdrows
+;modstk(newsp,save)
+	INCT SP
+	MOV *SP+,R3
+;putstk - int
+	MOV R4,*R3
+;	        }
+;modstk(newsp,save)
+;	      if(id == POINTER) msize = BPW;
+cc45:
+;getloc(sym, off)
+	MOV @8(SP),R4 ;optimised load
+	MOV R4,R3 ;optimised push/pop
+	LI R4,3
+;_cceq
+	C R3,R4 ;optimised
+	JEQ $+6
+	B @cc47
+;getloc(sym, off)
+	LI R4,4
+	A SP,R4
+	MOV R4,R3 ;optimised push/pop
+	LI R4,2
+;putstk - int
+	MOV R4,*R3
+;	      else {
+;jump(label)
+	B @cc48
+cc47:
+;	        msize = dim * elsize(mt);
+;modstk(newsp,save)
+;getloc(sym, off)
+	LI R4,4
+	A SP,R4
+	DECT SP
+	MOV R4,*SP
+;getloc(sym, off)
+	MOV @8(SP),R4 ;optimised load
+	DECT SP
+	MOV R4,*SP
+;getloc(sym, off)
+	MOV @14(SP),R4 ;optimised load
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @elsize
+;modstk(newsp,save)
+	INCT SP
+	MOV *SP+,R3
+	BL @_ccmult##
+	MOV *SP+,R3
+;putstk - int
+	MOV R4,*R3
+;	        if(msize == 0) error("incomplete struct");
+;getloc(sym, off)
+	MOV @4(SP),R4 ;optimised load
+	MOV R4,R4
+	JEQ $+6
+	B @cc49
+;constant(lval)
+	LI R4,cc20+82
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @error
+;modstk(newsp,save)
+	INCT SP
+;	        }
+cc49:
+;modstk(newsp,save)
+cc48:
+;	      if((id == POINTER || elsize(mt) != 1) && (off & 1))
+;getloc(sym, off)
+	MOV @8(SP),R4 ;optimised load
+	MOV R4,R3 ;optimised push/pop
+	LI R4,3
+;_cceq
+	C R3,R4 ;optimised
+	JNE $+6
+	B @cc51
+;getloc(sym, off)
+	MOV @10(SP),R4 ;optimised load
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @elsize
+;modstk(newsp,save)
+	INCT SP
+	MOV R4,R3 ;optimised push/pop
+	LI R4,1
+;_ccne
+	BL @_ccne##
+	MOV R4,R4
+	JEQ $+6
+	B @cc51
+	CLR R4
+;jump(label)
+	B @cc52
+cc51:
+	LI R4,1
+cc52:
+	MOV R4,R4
+	JNE $+6
+	B @cc53
+;getloc(sym, off)
+	MOV @2(SP),R4 ;optimised load
+	MOV R4,R3 ;optimised push/pop
+	LI R4,1
+;zand()
+	INV R3
+	SZC R3,R4
+	MOV R4,R4
+	JNE $+6
+	B @cc53
+	LI R4,1
+;jump(label)
+	B @cc54
+cc53:
+	CLR R4
+cc54:
+	MOV R4,R4
+	JNE $+6
+	B @cc50
+;	        ++off;                      /* words at even offsets */
+;getloc(sym, off)
+	LI R4,2
+	A SP,R4
+	MOV R4,R5 ;optimised expr save
+;indirect ccgint
+	MOV *R4,R4
+;inc()
+	INC R4
+	MOV R5,R3 ;optimised expr restore
+;putstk - int
+	MOV R4,*R3
+;	      if(nmembs >= NUMMEMB) {
+cc50:
+;getmem(sym)
+	MOV @nmembs,R4
+	MOV R4,R3 ;optimised push/pop
+	LI R4,40
+;_ccge
+	C R3,R4 ;optimised
+	JGT $+8
+	JEQ $+6
+	B @cc55
+;	        error("too many struct members");
+;modstk(newsp,save)
+;constant(lval)
+	LI R4,cc20+100
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @error
+;modstk(newsp,save)
+	INCT SP
+;	        return;
+;modstk(newsp,save)
+	AI SP,34
+	RET
+;	        }
+;	      m = memtab + nmembs * SYMMAX;
+cc55:
+;getloc(sym, off)
+	LI R4,30
+	A SP,R4
+	DECT SP
+	MOV R4,*SP
+;address(ptr)
+	LI R4,memtab
+	DECT SP
+	MOV R4,*SP
+;getmem(sym)
+	MOV @nmembs,R4
+	MOV R4,R3 ;optimised push/pop
+	LI R4,23
+	BL @_ccmult##
+	MOV *SP+,R3
+;	zadd()
+	A R3,R4
+	MOV *SP+,R3
+;putstk - int
+	MOV R4,*R3
+;	      m[IDENT] = id;
+;getloc(sym, off)
+	MOV @30(SP),R4 ;optimised load
+	MOV R4,R5 ;optimised expr save
+;getloc(sym, off)
+	MOV @8(SP),R4 ;optimised load/expr
+	MOV R5,R3 ;optimised expr restore
+;putstk - char
+	MOVB @2*R4+1(WP),*R3
+;	      m[TYPE]  = mt;
+;getloc(sym, off)
+	MOV @30(SP),R4 ;optimised load
+;inc()
+	INC R4
+	MOV R4,R5 ;optimised expr save
+;getloc(sym, off)
+	MOV @10(SP),R4 ;optimised load/expr
+	MOV R5,R3 ;optimised expr restore
+;putstk - char
+	MOVB @2*R4+1(WP),*R3
+;	      m[CLASS] = tag;
+;getloc(sym, off)
+	MOV @30(SP),R4 ;optimised load
+;inct()
+	INCT R4
+	MOV R4,R5 ;optimised expr save
+;getloc(sym, off)
+	MOV @38(SP),R4 ;optimised load/expr
+	MOV R5,R3 ;optimised expr restore
+;putstk - char
+	MOVB @2*R4+1(WP),*R3
+;	      putint(msize, m + SIZE, 2);
+;getloc(sym, off)
+	MOV @4(SP),R4 ;optimised load
+	DECT SP
+	MOV R4,*SP
+;getloc(sym, off)
+	MOV @32(SP),R4 ;optimised load
+;const2(val)
+	LI R3,3
+;	zadd()
+	A R3,R4
+	DECT SP
+	MOV R4,*SP
+	LI R4,2
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @putint
+;modstk(newsp,save)
+	AI SP,6
+;	      putint(isunion ? 0 : off, m + OFFSET, 2);
+;getloc(sym, off)
+	MOV @36(SP),R4 ;optimised load
+	MOV R4,R4
+	JNE $+6
+	B @cc56
+	CLR R4
+;jump(label)
+	B @cc57
+cc56:
+;getloc(sym, off)
+	MOV @2(SP),R4 ;optimised load
+cc57:
+	DECT SP
+	MOV R4,*SP
+;getloc(sym, off)
+	MOV @32(SP),R4 ;optimised load
+;const2(val)
+	LI R3,5
+;	zadd()
+	A R3,R4
+	DECT SP
+	MOV R4,*SP
+	LI R4,2
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @putint
+;modstk(newsp,save)
+	AI SP,6
+;	      m = m + NAME;
+;getloc(sym, off)
+	LI R4,30
+	A SP,R4
+	MOV R4,R5 ;optimised expr save
+;getloc(sym, off)
+	MOV @30(SP),R4 ;optimised load/expr
+;const2(val)
+	LI R3,7
+;	zadd()
+	A R3,R4
+	MOV R5,R3 ;optimised expr restore
+;putstk - int
+	MOV R4,*R3
+;	      dim = 0;
+;getloc(sym, off)
+	LI R4,6
+	A SP,R4
+	MOV R4,R3 ;optimised push/pop
+	CLR R4
+;putstk - int
+	MOV R4,*R3
+;	      while(an(mname[dim]) && dim < NAMEMAX) *m++ = mname[dim++];
+cc58:
+;getloc(sym, off)
+	LI R4,14
+	A SP,R4
+	MOV R4,R5 ;optimised expr save
+;getloc(sym, off)
+	MOV @6(SP),R4 ;optimised load/expr
+;scale(type,tag)
+	MOV R5,R3 ;optimised expr restore
+;	zadd()
+	A R3,R4
+;indirect ccgchar
+	MOVB *R4,R4
+	SRA R4,8
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @an
+;modstk(newsp,save)
+	INCT SP
+	MOV R4,R4
+	JNE $+6
+	B @cc60
+;getloc(sym, off)
+	MOV @6(SP),R4 ;optimised load
+	MOV R4,R3 ;optimised push/pop
+	LI R4,15
+;_cclt
+	C R3,R4 ;optimised
+	JLT $+6
+	B @cc60
+	LI R4,1
+;jump(label)
+	B @cc61
+cc60:
+	CLR R4
+cc61:
+	MOV R4,R4
+	JNE $+6
+	B @cc59
+;getloc(sym, off)
+	LI R4,30
+	A SP,R4
+	MOV R4,R5 ;optimised expr save
+;indirect ccgint
+	MOV *R4,R4
+;inc()
+	INC R4
+	MOV R5,R3 ;optimised expr restore
+;putstk - int
+	MOV R4,*R3
+;	dec()
+	DEC R4
+	DECT SP
+	MOV R4,*SP
+;getloc(sym, off)
+	LI R4,16
+	A SP,R4
+	DECT SP
+	MOV R4,*SP
+;getloc(sym, off)
+	LI R4,10
+	A SP,R4
+	MOV R4,R5 ;optimised expr save
+;indirect ccgint
+	MOV *R4,R4
+;inc()
+	INC R4
+	MOV R5,R3 ;optimised expr restore
+;putstk - int
+	MOV R4,*R3
+;	dec()
+	DEC R4
+;scale(type,tag)
+	MOV *SP+,R3
+;	zadd()
+	A R3,R4
+;indirect ccgchar
+	MOVB *R4,R4
+	SRA R4,8
+	MOV *SP+,R3
+;putstk - char
+	MOVB @2*R4+1(WP),*R3
+;jump(label)
+	B @cc58
+cc59:
+;	      *m = 0;
+;getloc(sym, off)
+	MOV @30(SP),R4 ;optimised load
+	MOV R4,R3 ;optimised push/pop
+	CLR R4
+;putstk - char
+	MOVB @2*R4+1(WP),*R3
+;	      ++nmembs;
+;getmem(sym)
+	MOV @nmembs,R4
+;inc()
+	INC R4
+;putmem(sym)
+	MOV R4,@nmembs
+;	      ++t[TAGCNT];
+;getloc(sym, off)
+	MOV @32(SP),R4 ;optimised load
+;const2(val)
+	LI R3,19
+;	zadd()
+	A R3,R4
+	MOV R4,R5 ;optimised expr save
+;indirect ccgchar
+	MOVB *R4,R4
+	SRA R4,8
+;inc()
+	INC R4
+	MOV R5,R3 ;optimised expr restore
+;putstk - char
+	MOVB @2*R4+1(WP),*R3
+;	      if(isunion) {
+;getloc(sym, off)
+	MOV @36(SP),R4 ;optimised load
+	MOV R4,R4
+	JNE $+6
+	B @cc62
+;	        if(msize > big) big = msize;
+;modstk(newsp,save)
+;getloc(sym, off)
+	MOV @4(SP),R4 ;optimised load
+	MOV R4,R5 ;optimised expr save
+;getloc(sym, off)
+	MOV *SP,R4 ;optimised load/expr
+	MOV R5,R3 ;optimised expr restore
+;_ccgt
+	C R3,R4 ;optimised
+	JGT $+6
+	B @cc63
+;getloc(sym, off)
+	MOV @4(SP),R4 ;optimised load
+;puttos()
+	MOV R4,*SP
+;	        }
+cc63:
+;modstk(newsp,save)
+;	      else off = off + msize;
+;jump(label)
+	B @cc64
+cc62:
+;getloc(sym, off)
+	MOV @2(SP),R4 ;optimised load
+	MOV R4,R5 ;optimised expr save
+;getloc(sym, off)
+	MOV @4(SP),R4 ;optimised load/expr
+	MOV R5,R3 ;optimised expr restore
+;	zadd()
+	A R3,R4
+;put2tos()
+	MOV R4,@2(SP)
+cc64:
+;	      if(match(",") == 0) break;
+;constant(lval)
+	LI R4,cc20+124
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @match
+;modstk(newsp,save)
+	INCT SP
+	MOV R4,R4
+	JEQ $+6
+	B @cc65
+;modstk(newsp,save)
+;jump(label)
+	B @cc38
+;	      }
+cc65:
+;modstk(newsp,save)
+;jump(label)
+	B @cc37
+cc38:
+;	    ns();
+;zcall()
+	CALL @ns
+;modstk(newsp,save)
+;	    }
+;modstk(newsp,save)
+;jump(label)
+	B @cc22
+cc23:
+;	  if(isunion) off = big;
+;getloc(sym, off)
+	MOV @36(SP),R4 ;optimised load
+	MOV R4,R4
+	JNE $+6
+	B @cc66
+;getloc(sym, off)
+	MOV *SP,R4 ;optimised load
+;put2tos()
+	MOV R4,@2(SP)
+;	  if(off & 1) ++off;
+cc66:
+;getloc(sym, off)
+	MOV @2(SP),R4 ;optimised load
+	MOV R4,R3 ;optimised push/pop
+	LI R4,1
+;zand()
+	INV R3
+	SZC R3,R4
+	MOV R4,R4
+	JNE $+6
+	B @cc67
+;getloc(sym, off)
+	LI R4,2
+	A SP,R4
+	MOV R4,R5 ;optimised expr save
+;indirect ccgint
+	MOV *R4,R4
+;inc()
+	INC R4
+	MOV R5,R3 ;optimised expr restore
+;putstk - int
+	MOV R4,*R3
+;	  putint(off, t + TAGSZ, 2);
+cc67:
+;getloc(sym, off)
+	MOV @2(SP),R4 ;optimised load
+	DECT SP
+	MOV R4,*SP
+;getloc(sym, off)
+	MOV @34(SP),R4 ;optimised load
+;const2(val)
+	LI R3,16
+;	zadd()
+	A R3,R4
+	DECT SP
+	MOV R4,*SP
+	LI R4,2
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @putint
+;modstk(newsp,save)
+	AI SP,6
+;	  }
+;modstk(newsp,save)
+	AI SP,34
+;modstk(newsp,save)
+	RET
+cc20:	BYTE 115,116,114,117,99,116,32,114,101,100,101,102
+	BYTE 105,110,101,100,0,125,0,99,104,97,114,0
+	BYTE 117,110,115,105,103,110,101,100,0,99,104,97
+	BYTE 114,0,105,110,116,0,105,110,116,0,115,116
+	BYTE 114,117,99,116,0,117,110,105,111,110,0,110
+	BYTE 101,101,100,32,109,101,109,98,101,114,32,116
+	BYTE 121,112,101,0,42,0,42,0,91,0,105,110
+	BYTE 99,111,109,112,108,101,116,101,32,115,116,114
+	BYTE 117,99,116,0,116,111,111,32,109,97,110,121
+	BYTE 32,115,116,114,117,99,116,32,109,101,109,98
+	BYTE 101,114,115,0,44,0
+;	/*
+;	** ==== Multi-dimensional arrays ====
+;	** int m[3][4] is an array of 3 rows, each a row of 4 ints.  A row is
+;	** a tag-table entry with an empty name (so no struct lookup can find
+;	** it): size = its byte size, TAGFIRST = its element type.  Its type
+;	** code is (tag << 2) | 3 - STRUCTBIT and bit 0 together, a combination
+;	** a struct never uses - so elsize() gives its size unchanged.  Rows are
+;	** shared: every int[4] row is the same entry.
+;	**
+;	** mdrows(elem): called (through R_STRUCT(2, elem)) just after a
+;	** declarator's first [n]; parses any further [a][b].. and returns the
+;	** element type for that first dimension - elem itself if there are none.
+;	*/
+;	mdrows(elem) int elem; {
+	EVEN
+mdrows:
+;	  int d[4], n;
+;	  n = 0;
+;modstk(newsp,save)
+	AI SP,-10
+	CLR R4
+;puttos()
+	MOV R4,*SP
+;	  while(match("[")) {
+cc69:
+;constant(lval)
+	LI R4,cc68+0
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @match
+;modstk(newsp,save)
+	INCT SP
+	MOV R4,R4
+	JNE $+6
+	B @cc70
+;	    if(n < 4) d[n++] = needsub();
+;modstk(newsp,save)
+;getloc(sym, off)
+	MOV *SP,R4 ;optimised load
+	MOV R4,R3 ;optimised push/pop
+	LI R4,4
+;_cclt
+	C R3,R4 ;optimised
+	JLT $+6
+	B @cc71
+;getloc(sym, off)
+	LI R4,2
+	A SP,R4
+	DECT SP
+	MOV R4,*SP
+;getloc(sym, off)
+	LI R4,2
+	A SP,R4
+	MOV R4,R5 ;optimised expr save
+;indirect ccgint
+	MOV *R4,R4
+;inc()
+	INC R4
+	MOV R5,R3 ;optimised expr restore
+;putstk - int
+	MOV R4,*R3
+;	dec()
+	DEC R4
+;scale(type,tag)
+;	doublereg()
+	A R4,R4
+	MOV *SP+,R3
+;	zadd()
+	A R3,R4
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @needsub
+;modstk(newsp,save)
+	MOV *SP+,R3
+;putstk - int
+	MOV R4,*R3
+;	    else {
+;jump(label)
+	B @cc72
+cc71:
+;	      error("too many dimensions");
+;modstk(newsp,save)
+;constant(lval)
+	LI R4,cc68+2
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @error
+;modstk(newsp,save)
+	INCT SP
+;	      needsub();
+;zcall()
+	CALL @needsub
+;modstk(newsp,save)
+;	      }
+;modstk(newsp,save)
+cc72:
+;	    }
+;modstk(newsp,save)
+;jump(label)
+	B @cc69
+cc70:
+;	  while(n) elem = mkrow(elem, d[--n]);     /* innermost first */
+cc73:
+;getloc(sym, off)
+	MOV *SP,R4 ;optimised load
+	MOV R4,R4
+	JNE $+6
+	B @cc74
+;getloc(sym, off)
+	LI R4,12
+	A SP,R4
+	DECT SP
+	MOV R4,*SP
+;getloc(sym, off)
+	MOV @14(SP),R4 ;optimised load
+	DECT SP
+	MOV R4,*SP
+;getloc(sym, off)
+	LI R4,6
+	A SP,R4
+	DECT SP
+	MOV R4,*SP
+;getloc(sym, off)
+	LI R4,6
+	A SP,R4
+	MOV R4,R5 ;optimised expr save
+;indirect ccgint
+	MOV *R4,R4
+;	dec()
+	DEC R4
+	MOV R5,R3 ;optimised expr restore
+;putstk - int
+	MOV R4,*R3
+;scale(type,tag)
+;	doublereg()
+	A R4,R4
+	MOV *SP+,R3
+;	zadd()
+	A R3,R4
+;indirect ccgint
+	MOV *R4,R4
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @mkrow
+;modstk(newsp,save)
+	AI SP,4
+	MOV *SP+,R3
+;putstk - int
+	MOV R4,*R3
+;jump(label)
+	B @cc73
+cc74:
+;	  return elem;
+;getloc(sym, off)
+	MOV @12(SP),R4 ;optimised load
+;modstk(newsp,save)
+	AI SP,10
+	RET
+;	  }
+cc68:	BYTE 91,0,116,111,111,32,109,97,110,121,32,100
+	BYTE 105,109,101,110,115,105,111,110,115,0
+;	mkrow(elem, dim) int elem, dim; {
+	EVEN
+mkrow:
+;	  char *t;
+;	  int i, size;
+;	  elem = elem & 255;
+;modstk(newsp,save)
+	AI SP,-6
+;getloc(sym, off)
+	LI R4,10
+	A SP,R4
+	DECT SP
+	MOV R4,*SP
+;getloc(sym, off)
+	MOV @12(SP),R4 ;optimised load
+	MOV R4,R3 ;optimised push/pop
+	LI R4,255
+;zand()
+	INV R3
+	SZC R3,R4
+	MOV *SP+,R3
+;putstk - int
+	MOV R4,*R3
+;	  if((size = dim * elsize(elem)) == 0) error("need array size");
+;getloc(sym, off)
+	MOV @8(SP),R4 ;optimised load
+	DECT SP
+	MOV R4,*SP
+;getloc(sym, off)
+	MOV @12(SP),R4 ;optimised load
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @elsize
+;modstk(newsp,save)
+	INCT SP
+	MOV *SP+,R3
+	BL @_ccmult##
+;puttos()
+	MOV R4,*SP
+	MOV R4,R4
+	JEQ $+6
+	B @cc76
+;constant(lval)
+	LI R4,cc75+0
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @error
+;modstk(newsp,save)
+	INCT SP
+;	  i = 0;
+cc76:
+	CLR R4
+;put2tos()
+	MOV R4,@2(SP)
+;	  while(i < ntags) {                     /* an identical row already? */
+cc77:
+;getloc(sym, off)
+	MOV @2(SP),R4 ;optimised load
+	MOV R4,R3 ;optimised push/pop
+	MOV @ntags,R4
+;_cclt
+	C R3,R4 ;optimised
+	JLT $+6
+	B @cc78
+;	    t = tagtab + i * TAGSIZ;
+;modstk(newsp,save)
+;getloc(sym, off)
+	LI R4,4
+	A SP,R4
+	DECT SP
+	MOV R4,*SP
+;address(ptr)
+	LI R4,tagtab
+	DECT SP
+	MOV R4,*SP
+;getloc(sym, off)
+	MOV @6(SP),R4 ;optimised load
+	MOV R4,R3 ;optimised push/pop
+	LI R4,20
+	BL @_ccmult##
+	MOV *SP+,R3
+;	zadd()
+	A R3,R4
+	MOV *SP+,R3
+;putstk - int
+	MOV R4,*R3
+;	    if(t[0] == 0 && (t[TAGFIRST] & 255) == elem
+;getloc(sym, off)
+	MOV @4(SP),R4 ;optimised load
+;indirect ccgchar
+	MOVB *R4,R4
+	SRA R4,8
+	MOV R4,R3 ;optimised push/pop
+	CLR R4
+;_cceq
+	C R3,R4 ;optimised
+	JEQ $+6
+	B @cc80
+;getloc(sym, off)
+	MOV @4(SP),R4 ;optimised load
+;const2(val)
+	LI R3,18
+;	zadd()
+	A R3,R4
+;indirect ccgchar
+	MOVB *R4,R4
+	SRA R4,8
+	MOV R4,R3 ;optimised push/pop
+	LI R4,255
+;zand()
+	INV R3
+	SZC R3,R4
+	MOV R4,R5 ;optimised expr save
+;getloc(sym, off)
+	MOV @10(SP),R4 ;optimised load/expr
+	MOV R5,R3 ;optimised expr restore
+;_cceq
+	C R3,R4 ;optimised
+	JEQ $+6
+	B @cc80
+;getloc(sym, off)
+	MOV @4(SP),R4 ;optimised load
+;const2(val)
+	LI R3,16
+;	zadd()
+	A R3,R4
+	DECT SP
+	MOV R4,*SP
+	LI R4,2
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @getint
+;modstk(newsp,save)
+	AI SP,4
+	MOV R4,R5 ;optimised expr save
+;getloc(sym, off)
+	MOV *SP,R4 ;optimised load/expr
+	MOV R5,R3 ;optimised expr restore
+;_cceq
+	C R3,R4 ;optimised
+	JEQ $+6
+	B @cc80
+	LI R4,1
+;jump(label)
+	B @cc81
+cc80:
+	CLR R4
+cc81:
+	MOV R4,R4
+	JNE $+6
+	B @cc79
+;getloc(sym, off)
+	MOV @2(SP),R4 ;optimised load
+	MOV R4,R3 ;optimised push/pop
+	LI R4,2
+	BL @_ccasl##
+	MOV R4,R3 ;optimised push/pop
+	LI R4,3
+;zor()
+	SOC R3,R4
+;modstk(newsp,save)
+	AI SP,6
+	RET
+;	    ++i;
+cc79:
+;getloc(sym, off)
+	LI R4,2
+	A SP,R4
+	MOV R4,R5 ;optimised expr save
+;indirect ccgint
+	MOV *R4,R4
+;inc()
+	INC R4
+	MOV R5,R3 ;optimised expr restore
+;putstk - int
+	MOV R4,*R3
+;	    }
+;modstk(newsp,save)
+;jump(label)
+	B @cc77
+cc78:
+;	  if(ntags >= NUMTAGS) {
+;getmem(sym)
+	MOV @ntags,R4
+	MOV R4,R3 ;optimised push/pop
+	LI R4,16
+;_ccge
+	C R3,R4 ;optimised
+	JGT $+8
+	JEQ $+6
+	B @cc82
+;	    error("too many struct/row types");
+;modstk(newsp,save)
+;constant(lval)
+	LI R4,cc75+16
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @error
+;modstk(newsp,save)
+	INCT SP
+;	    return elem;
+;getloc(sym, off)
+	MOV @10(SP),R4 ;optimised load
+;modstk(newsp,save)
+	AI SP,6
+	RET
+;	    }
+;	  t = tagtab + ntags * TAGSIZ;
+cc82:
+;getloc(sym, off)
+	LI R4,4
+	A SP,R4
+	DECT SP
+	MOV R4,*SP
+;address(ptr)
+	LI R4,tagtab
+	DECT SP
+	MOV R4,*SP
+;getmem(sym)
+	MOV @ntags,R4
+	MOV R4,R3 ;optimised push/pop
+	LI R4,20
+	BL @_ccmult##
+	MOV *SP+,R3
+;	zadd()
+	A R3,R4
+	MOV *SP+,R3
+;putstk - int
+	MOV R4,*R3
+;	  i = 0;
+	CLR R4
+;put2tos()
+	MOV R4,@2(SP)
+;	  while(i < TAGSIZ) t[i++] = 0;
+cc83:
+;getloc(sym, off)
+	MOV @2(SP),R4 ;optimised load
+	MOV R4,R3 ;optimised push/pop
+	LI R4,20
+;_cclt
+	C R3,R4 ;optimised
+	JLT $+6
+	B @cc84
+;getloc(sym, off)
+	MOV @4(SP),R4 ;optimised load
+	DECT SP
+	MOV R4,*SP
+;getloc(sym, off)
+	LI R4,4
+	A SP,R4
+	MOV R4,R5 ;optimised expr save
+;indirect ccgint
+	MOV *R4,R4
+;inc()
+	INC R4
+	MOV R5,R3 ;optimised expr restore
+;putstk - int
+	MOV R4,*R3
+;	dec()
+	DEC R4
+;scale(type,tag)
+	MOV *SP+,R3
+;	zadd()
+	A R3,R4
+	MOV R4,R3 ;optimised push/pop
+	CLR R4
+;putstk - char
+	MOVB @2*R4+1(WP),*R3
+;jump(label)
+	B @cc83
+cc84:
+;	  putint(size, t + TAGSZ, 2);
+;getloc(sym, off)
+	MOV *SP,R4 ;optimised load
+	DECT SP
+	MOV R4,*SP
+;getloc(sym, off)
+	MOV @6(SP),R4 ;optimised load
+;const2(val)
+	LI R3,16
+;	zadd()
+	A R3,R4
+	DECT SP
+	MOV R4,*SP
+	LI R4,2
+	DECT SP
+	MOV R4,*SP
+;zcall()
+	CALL @putint
+;modstk(newsp,save)
+	AI SP,6
+;	  t[TAGFIRST] = elem;
+;getloc(sym, off)
+	MOV @4(SP),R4 ;optimised load
+;const2(val)
+	LI R3,18
+;	zadd()
+	A R3,R4
+	MOV R4,R5 ;optimised expr save
+;getloc(sym, off)
+	MOV @10(SP),R4 ;optimised load/expr
+	MOV R5,R3 ;optimised expr restore
+;putstk - char
+	MOVB @2*R4+1(WP),*R3
+;	  return ((ntags++ << 2) | 3);
+;getmem(sym)
+	MOV @ntags,R4
+;inc()
+	INC R4
+;putmem(sym)
+	MOV R4,@ntags
+;	dec()
+	DEC R4
+	MOV R4,R3 ;optimised push/pop
+	LI R4,2
+	BL @_ccasl##
+	MOV R4,R3 ;optimised push/pop
+	LI R4,3
+;zor()
+	SOC R3,R4
+;modstk(newsp,save)
+	AI SP,6
+	RET
+;	  }
+cc75:	BYTE 110,101,101,100,32,97,114,114,97,121,32,115
+	BYTE 105,122,101,0,116,111,111,32,109,97,110,121
+	BYTE 32,115,116,114,117,99,116,47,114,111,119,32
+	BYTE 116,121,112,101,115,0
+	EXT kill
+	EXT memtab
+	ENT mdrows
+	EXT nmembs
+	EXT needsub
+	EXT endst
+	EXT illname
+	EXT tagtab
+	EXT match
+	EXT eof
+	EXT symname
+	EXT amatch
+	EXT error
+	EXT an
+	EXT ntags
+	ENT mkrow
+	EXT ns
+	ENT dobody
+	ENT dfindtag
+	ENT dnewtag
+	EXT getint
+	EXT putint
+	EXT astreq
+	EXT elsize
+	ENT dostruct
+	EVEN
+	END
+
+; --- End of Compilation ---
