@@ -111,7 +111,7 @@ function Assemble-R99 {
     }
 }
 
-$LINK99_VER = "3.9.58"   # 3.9.58: >64K code, XRPLUS, cdisk, ifilelbuf (see link99.c)
+$LINK99_VER = "3.9.59"   # 3.9.59: XPOFF marker fix (3.9.58 mis-relocated some overlay words); 3.9.58: >64K code, XRPLUS, cdisk, ifilelbuf
 $DREL_VER   = "Version 4.0"
 $MONITOR_DIR = "C:\Development-W11DEV\Eclipse Workspace\TMS99105_SBC\MONITOR"
 $TOOLCHAIN_DIR = Join-Path $PSScriptRoot "toolchain"
