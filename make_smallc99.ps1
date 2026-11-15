@@ -141,22 +141,18 @@ $LIB_INPUTS = @($RUNTIME_OBJECTS) + @($RUNTIME_LIBRARIES) + @($RUNTIME_INDEXES)
 # This deliberately copies matching .NDX files alongside .LIB files.
 $LIB_COPY_PATTERNS = @("*.R99", "*.LIB", "*.NDX")
 
-$OVERLAYS = @(
-    @{ Name="CC_DECL";   Page=2;  Descriptor="CC_DECL.R99=2,3,dodeclare:D_DODECL" }
-    @{ Name="CC_PREP";   Page=9;  Descriptor="CC_PREP.R99=9,4,preprocess:P_PREP,dodefine:P_DEFINE,doinclude:P_INCLUDE,doasm:P_DOASM" }
-    @{ Name="CC_MACS";   Page=10; Descriptor="CC_MACS.R99=10,4,putmac:-" }
-    @{ Name="CC_STMT";   Page=3;  Descriptor="CC_STMT.R99=3,2,statement:S_STMT" }
-    @{ Name="CC_STMT_R"; Page=14; Descriptor="CC_STMT_R.R99=14,2,doexpr:-" }
-    @{ Name="CC_EXPR_A"; Page=4;  Descriptor="CC_EXPR_A.R99=4,1,expression:E_EXPR,constexpr:E_CEXPR" }
-    @{ Name="CC_EXPR_B"; Page=5;  Descriptor="CC_EXPR_B.R99=5,1,test:E_TEST" }
-    @{ Name="CC_DFUN";   Page=6;  Descriptor="CC_DFUN.R99=6,5,dofunction:D_DOFN" }
-    @{ Name="CC_EXPR_C"; Page=7;  Descriptor="CC_EXPR_C.R99=7,1,level1:-" }
-    @{ Name="CC_EXPR_D"; Page=8;  Descriptor="CC_EXPR_D.R99=8,1,primary:-" }
-    @{ Name="CC_CG99";   Page=11; Descriptor="CC_CG99.R99=11,6,ccout:P_CCOUT" }
-    @{ Name="CC_CG99T";  Page=13; Descriptor="CC_CG99T.R99=13,6,setcodes:P_SETCODES" }
-    @{ Name="CC_CL99";   Page=12; Descriptor="CC_CL99.R99=12,7,getoptions:P_GETOPTS,errrep:P_ERRREP" }
-    @{ Name="CC_STRD";   Page=15; Descriptor="CC_STRD.R99=15,8,dostruct:T_STRUCT" }   # structs phase 1: struct/union declarations
-)
+# Phase 1 of the OVL99 port: declare the existing physical layout in a
+# separate map, preserving the current 8 overlay IDs and all 14 DREL
+# descriptors byte-for-byte. Legacy OVLSTUBS.A99 remains in use for now.
+$OVLMAP_FILE = Join-Path $PSScriptRoot "OVLMAP.TXT"
+$OVLMAP_READER = Join-Path $PSScriptRoot "tools\ovlmanifest.ps1"
+$OVLDEFS_FILE = Join-Path $PSScriptRoot "include\OVLDEFS.INC"
+foreach ($requiredMapFile in @($OVLMAP_FILE, $OVLMAP_READER, $OVLDEFS_FILE)) {
+    Require-File $requiredMapFile
+}
+$OVERLAYS = @(& $OVLMAP_READER -Map $OVLMAP_FILE -Defs $OVLDEFS_FILE)
+if ($OVERLAYS.Count -eq 0) { throw "*** BUILD FAILED: no OVL99 manifest entries" }
+Write-Output ("OVL99 phase-1 manifest: " + $OVERLAYS.Count + " physical modules; existing OVLSTUBS unchanged.")
 
 # Overlay ownership contract.  Framed overlay dispatch saves/restores only
 # CUR_WINA_ID, and CUR_WINA_ID is defined by the overlay mapped into virtual
