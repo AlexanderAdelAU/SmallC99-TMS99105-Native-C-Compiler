@@ -177,6 +177,43 @@ compiler, and check on hardware (especially nested expressions,
 error reporting/CLI's segment-A-only mapping, switch cases, structs,
 and the multi-page CGEN backend). No merge to `main` before that.
 
+## First SBC runtime result: INT2 during CTEST compile (15 Nov 2026)
+
+User reported that the newly generated-dispatch SMALLC99 EXE loaded and
+began the command:
+
+```text
+%smallc99 ctest.c -v
+SMALLC99: compiling CTEST.C -> CTEST.A99
+INT2 PC:
+```
+
+The SBC appeared to hang after printing `INT2 PC:`. The compiler had
+been running for a noticeable period, but its current phase and the
+source line at failure are not yet established. No complete INT2 register
+dump was captured. The locally supplied Windows build log *does* contain
+`OVL99: generated 16 resident dispatch entries`,
+`OVL99 linker audit: 15 referenced R_* names resolve in resident memory`,
+and `BUILD SUCCESSFUL`. This confirms link-stage success but **not**
+runtime correctness.
+
+**Acceptance status: SBC runtime FAIL / investigation required. Do not
+merge into main.**
+
+Immediate controlled triage:
+1. Reset the SBC; test a very small, known-good C program with this
+   same OVL99 executable (prefer `M38B.C` or another short fixture).
+2. Compile the exact same `CTEST.C` with the existing known-good
+   SMALLC99 from main; compare whether INT2 reproduces.
+3. After resetting, inspect whether `CTEST.A99` exists and how much
+   was written. Do not infer it reached the end based only on elapsed
+   time. Avoid shell `TYPE` for a long file while its separate
+   intermittent INT2 issue remains under investigation.
+4. If new build only fails, inspect common OVCALL nested frame
+   integrity, entry dispatch and CLI segment-A exception with focused
+   instrumentation or emulator traces. If both fail, isolate shell,
+   runtime or source-specific causes before changing overlay code.
+
 ## Work that is explicitly *not* part of the initial branch
 
 - No changes to Windows LINK99, Small-C language semantics or BDOS.
