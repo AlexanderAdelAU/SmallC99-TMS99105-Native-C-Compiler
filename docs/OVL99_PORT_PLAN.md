@@ -291,3 +291,39 @@ preprocessor/expression/CLI transition. Compare with the legacy stub
 and identify whether the page was never mapped, improperly restored,
 or remapped afterward. Keep the FileEdit runtime frozen and both
 SMALLC99 and LINK99 production branches untouched.
+
+
+## Focused diagnostic for SBC INT2 at >92E4 (15 November 2026)
+
+Artifact review found `dogoto` published at `>92D2` in the generated
+`CC_STMT_R.A99`. With its early instruction sizes, `>92E4` falls at
+`MOV R4,*SP` in the branch that constructs the argument for
+`error("not allowed with block-locals")`. This makes corrupted SP or
+mapping a plausible hypothesis, **not** a confirmed explanation.
+
+A temporary `MAPDIAG` entry has been added to resident
+`OVLMGR.A99` and called at the start of `dogoto()`. It writes four
+16-bit words via WHEX (no code or data mappings are changed):
+
+1. `D900` — diagnostic tag
+2. `CUR_WINA_ID` — expected logical owner `0002` (STMT)
+3. `CURRENT_PAGE[9]` — expected tracked physical page `000E` (14)
+4. `SP` — compiler stack pointer at the diagnostic call
+
+This is a **software tracker**, not a direct read of the CRU mapping
+register, so even `0002/000E` does not by itself establish actual
+hardware page selection. The original interrupt monitor's `PAGE:0000`
+may be post-interrupt state and must not be assumed to reflect the
+last executing instruction's page.
+
+The diagnostic source and assembled artifact have passed Windows CI
+[run 43718260384](https://github.com/AlexanderAdelAU/SmallC99-TMS99105-Native-C-Compiler/actions/runs/43718260384);
+the build log confirms `MAPDIAG` from `CC_STMT_R` resolves to
+resident `>178A`, and the normal resident thunk audit also passes.
+It has **not** been run on the SBC yet.
+
+**Next SBC test:** Pull `ovl99-smallc99-integration`, rebuild, transfer
+the new `SMALLC99.EXE`, run `SMALLC99 CTEST.C -V`, and capture the
+last OVT marker plus any four WHEX words starting with `D900` and
+the INT2 register report. This is diagnostic only. Do not merge into
+`main` or treat the fault as resolved.
