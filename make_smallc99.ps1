@@ -172,9 +172,10 @@ $required = @(
     "src\fixtures\M38D.C",
     "src\harness\M38DPROBE.A99",
     "src\resident\CC_PORT.A99",
-    "src\resident\CLISTUB.A99",
+    "src\resident\OVCALL.A99",
     "src\resident\OVLMGR.A99",
-    "src\resident\OVLSTUBS.A99",
+    "tools\ovlthunks.ps1",
+    "OVLTHUNKS.TXT",
     "src\resident\SPYOUT.A99",
     "src\resident\CC_STRU.A99",
     "src\overlays\CC_STRD.C",
@@ -219,7 +220,7 @@ foreach ($name in $commonOverlays) {
     Copy-Item -LiteralPath (Join-Path "src\overlays" $name) -Destination (Join-Path "build_tms" $name) -Force
 }
 
-$residentAsm = @("CC_PORT.A99", "CLISTUB.A99", "OVLMGR.A99", "OVLSTUBS.A99", "SPYOUT.A99", "CC_STRU.A99")
+$residentAsm = @("CC_PORT.A99", "OVCALL.A99", "OVLMGR.A99", "SPYOUT.A99", "CC_STRU.A99")
 foreach ($name in $residentAsm) {
     Copy-Item -LiteralPath (Join-Path "src\resident" $name) -Destination (Join-Path "build_tms" $name) -Force
 }
@@ -656,11 +657,21 @@ if ($tableText -notmatch 'WORD\s+10,12,0,0,0,0,0,0,0,0\s*;ID 7') {
     throw "*** BUILD FAILED: overlay ID 7 is not mapped to page 12"
 }
 
-foreach ($name in @("SMALLC99","CC_PORT","CLISTUB","CC_CD99","CC_RESIDENT","CC_SCAN_SYM","CC_DATA","OVLMGR","OVLSTUBS","SPYOUT","CC_STRU")) {
+# Generate the shared-gate entry thunks using the ACTUAL, repaired DREL
+# table. CLI and multi-page call targets are checked before assembly.
+$ThunkGenerator = Join-Path $PSScriptRoot "tools\ovlthunks.ps1"
+$thunkLog = & $ThunkGenerator -Map (Join-Path $PSScriptRoot "OVLMAP.TXT") `
+    -Calls (Join-Path $PSScriptRoot "OVLTHUNKS.TXT") `
+    -Defs ".\OVLDEFS.INC" -Addresses ".\OVLADDR.INC" `
+    -Table ".\OVLTABLE.INC" -Output ".\OVLTHUNK.A99" 2>&1 | Out-String
+Write-Output $thunkLog
+Require-File ".\OVLTHUNK.A99"
+
+foreach ($name in @("SMALLC99","CC_PORT","OVCALL","OVLTHUNK","CC_CD99","CC_RESIDENT","CC_SCAN_SYM","CC_DATA","OVLMGR","SPYOUT","CC_STRU")) {
     Assemble-R99 $name
 }
 
-$residentFiles = @("SMALLC99.R99","CC_PORT.R99","CLISTUB.R99","CC_CD99.R99","CC_RESIDENT.R99","CC_SCAN_SYM.R99","CC_DATA.R99","CC_STRU.R99")
+$residentFiles = @("SMALLC99.R99","CC_PORT.R99","OVCALL.R99","OVLTHUNK.R99","CC_CD99.R99","CC_RESIDENT.R99","CC_SCAN_SYM.R99","CC_DATA.R99","CC_STRU.R99")
 $residentLint = & .\drel.exe -c @residentFiles 2>&1 | Out-String
 $residentLintExit = $LASTEXITCODE
 Write-Output "`n================================================"
@@ -694,7 +705,7 @@ foreach ($overlay in $OVERLAYS) {
 
 $linkArgs = @(
     "-O1000", "-M", "-S", "SMALLC99.EXE",
-    "SMALLC99.R99", "CC_PORT.R99", "CLISTUB.R99", "OVLMGR.R99", "OVLSTUBS.R99",
+    "SMALLC99.R99", "CC_PORT.R99", "OVCALL.R99", "OVLMGR.R99", "OVLTHUNK.R99",
     "CC_RESIDENT.R99", "CC_SCAN_SYM.R99", "CC_CD99.R99", "CC_DATA.R99"
 )
 $linkArgs += $RUNTIME_OBJECTS
