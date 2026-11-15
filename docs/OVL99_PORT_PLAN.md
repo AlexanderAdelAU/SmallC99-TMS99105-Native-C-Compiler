@@ -179,6 +179,19 @@ and the multi-page CGEN backend). No merge to `main` before that.
 
 ## First SBC runtime result: INT2 during CTEST compile (15 Nov 2026)
 
+User subsequently confirmed `CTEST.A99` is created but empty. Because the
+output stream may be buffered until close, zero bytes does not determine
+whether the failure occurred before or during `parse()`.
+
+A temporary diagnostic build now prints stage markers `OVT A` through
+`OVT G` immediately around compiler initialization, file opening,
+firstline preprocessing, header generation, parsing and trailer generation.
+This is *instrumentation*, not an attempted runtime fix. The Windows
+cross-build of that diagnostic version passed:
+[run 43715676825](https://github.com/AlexanderAdelAU/SmallC99-TMS99105-Native-C-Compiler/actions/runs/43715676825).
+The next SBC observation needed is the **last `OVT` marker before INT2**.
+Remove these temporary messages after the fault is localized.
+
 User reported that the newly generated-dispatch SMALLC99 EXE loaded and
 began the command:
 
