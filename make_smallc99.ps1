@@ -736,88 +736,27 @@ foreach ($overlay in $OVERLAYS) {
         throw "*** BUILD FAILED: LINK99 did not report page $($overlay.Page) for $($overlay.Name)"
     }
 }
-# Validate the actual LINK99 results, not just the generated source. An
-# overlay xref that bound to >8000-BFFF instead of a resident R_* thunk
-# would become unsafe as soon as a different page was mapped.
+# Validate LINK99's ACTUAL external resolutions: all referenced R_* call
+# symbols must reach resident thunks, never virtual overlay text addresses.
 $dispatchNames = @{}
-foreach ($line in (Get-Content -LiteralPath (Join-Path $PSScriptRoot "OVLTHUNKS.TXT"))) {
-    $line = ($line -replace '#.*
-
-if (-not (Test-Path -LiteralPath $MONITOR_DIR -PathType Container)) {
-    throw "*** BUILD FAILED: monitor destination does not exist: $MONITOR_DIR"
-}
-$exeDest = Join-Path $MONITOR_DIR "SMALLC99.EXE"
-$srcDest = Join-Path $MONITOR_DIR "M38B.C"
-$testDest = Join-Path $MONITOR_DIR "TEST.C"
-$byteDest = Join-Path $MONITOR_DIR "M38D.C"
-$langTestDest = Join-Path $MONITOR_DIR "LANGTEST.C"
-$strTestDest = Join-Path $MONITOR_DIR "STRTEST.C"
-$ptrTestDest = Join-Path $MONITOR_DIR "PTRTEST.C"
-$arrTestDest = Join-Path $MONITOR_DIR "ARRTEST.C"
-Copy-Item -LiteralPath ".\SMALLC99.EXE" -Destination $exeDest -Force
-Copy-Item -LiteralPath ".\M38B.C" -Destination $srcDest -Force
-Copy-Item -LiteralPath ".\TEST.C" -Destination $testDest -Force
-Copy-Item -LiteralPath ".\M38D.C" -Destination $byteDest -Force
-Copy-Item -LiteralPath "..\tests\LANGTEST_LANGUAGE.C" -Destination $langTestDest -Force
-Copy-Item -LiteralPath "..\tests\STRUCTTEST.C" -Destination $strTestDest -Force
-Copy-Item -LiteralPath "..\tests\PTRTEST.C" -Destination $ptrTestDest -Force
-Copy-Item -LiteralPath "..\tests\ARRTEST.C" -Destination $arrTestDest -Force
-if ((Get-FileHash ".\SMALLC99.EXE" -Algorithm SHA256).Hash -ne (Get-FileHash $exeDest -Algorithm SHA256).Hash) {
-    throw "*** BUILD FAILED: deployed SMALLC99 hash mismatch"
-}
-if ((Get-FileHash ".\M38B.C" -Algorithm SHA256).Hash -ne (Get-FileHash $srcDest -Algorithm SHA256).Hash) {
-    throw "*** BUILD FAILED: deployed M38B.C hash mismatch"
-}
-if ((Get-FileHash ".\TEST.C" -Algorithm SHA256).Hash -ne (Get-FileHash $testDest -Algorithm SHA256).Hash) {
-    throw "*** BUILD FAILED: deployed TEST.C hash mismatch"
-}
-if ((Get-FileHash ".\M38D.C" -Algorithm SHA256).Hash -ne (Get-FileHash $byteDest -Algorithm SHA256).Hash) {
-    throw "*** BUILD FAILED: deployed M38D.C hash mismatch"
-}
-if ((Get-FileHash "..\tests\LANGTEST_LANGUAGE.C" -Algorithm SHA256).Hash -ne (Get-FileHash $langTestDest -Algorithm SHA256).Hash) {
-    throw "*** BUILD FAILED: deployed LANGTEST.C hash mismatch"
-}
-
-# -------------------------------------------------------
-# Release directory lock back to script root before exiting
-# -------------------------------------------------------
-Set-Location -LiteralPath $PSScriptRoot
-
-
-Write-Output "`n================================================"
-Write-Output "BUILD SUCCESSFUL - MILESTONE 38e TWO-PAGE CODEGEN OVERLAY - "
-Write-Output "================================================"
-Write-Output "SMALLC99.EXE deployed to:"
-Write-Output $exeDest
-Write-Output "M38B.C deployed to:"
-Write-Output $srcDest
-Write-Output "TEST.C deployed to:"
-Write-Output $testDest
-Write-Output "M38D.C deployed to:"
-Write-Output $byteDest
-Write-Output "Run minimal: SMALLC99 M38B M38B /V"
-Write-Output "Run word core: SMALLC99 TEST TEST /V"
-Write-Output "Run byte test: SMALLC99 M38D M38D /V"
-Write-Output "Expected output files: M38B.A99, TEST.A99 and M38D.A99"
-
-# Explicitly terminate the dedicated PowerShell build host on success.
-exit 0, '').Trim()
-    if ($line -eq '') { continue }
-    $f = @($line -split '[ \t]+' | Where-Object { $_ -ne '' })
-    $dispatchNames[$f[0].ToUpperInvariant()] = $true
+foreach ($raw in (Get-Content -LiteralPath (Join-Path $PSScriptRoot "OVLTHUNKS.TXT"))) {
+    $line = $raw.Trim()
+    if ($line.Length -eq 0 -or $line.StartsWith("#")) { continue }
+    $fields = @($line -split '[ \t]+' | Where-Object { $_ -ne '' })
+    $dispatchNames[$fields[0].ToUpperInvariant()] = $true
 }
 $seenLinkDispatch = @{}
-foreach ($line in ($linkOutput -split "`r?`n")) {
+foreach ($line in ($linkOutput -split '\r?\n')) {
     $m = [regex]::Match($line, 'xref[ \t]+(R_[A-Za-z0-9_]+)[ \t]+@[ \t]*[0-9A-F]+[ \t]*=[ \t]*([0-9A-F]+)', [Text.RegularExpressions.RegexOptions]::IgnoreCase)
     if (-not $m.Success) { continue }
     $name = $m.Groups[1].Value.ToUpperInvariant()
     if (-not $dispatchNames.ContainsKey($name)) { continue }
     $bound = [Convert]::ToInt32($m.Groups[2].Value,16)
     if ($bound -lt 0x1000 -or $bound -ge 0x8000) {
-        throw ("*** BUILD FAILED: {0} resolves to >{1:X4}, not a resident thunk" -f $name,$bound)
+        throw ("*** BUILD FAILED: {0} resolved at >{1:X4}, outside resident memory" -f $name,$bound)
     }
     if ($seenLinkDispatch.ContainsKey($name) -and $seenLinkDispatch[$name] -ne $bound) {
-        throw "*** BUILD FAILED: inconsistent LINK99 addresses for $name"
+        throw "*** BUILD FAILED: inconsistent LINK99 resolutions for $name"
     }
     $seenLinkDispatch[$name] = $bound
 }
@@ -826,7 +765,7 @@ foreach ($name in @("R_GETOPTS","R_EXPRVAL","R_STMT","R_CCOUT","R_STRUCT","R_PRE
         throw "*** BUILD FAILED: LINK99 did not demonstrate resident binding for $name"
     }
 }
-Write-Output ("OVL99 linker audit: {0} referenced R_* entries bound to resident thunks." -f $seenLinkDispatch.Count)
+Write-Output ("OVL99 linker audit: {0} referenced R_* names resolve in resident memory." -f $seenLinkDispatch.Count)
 
 Require-File ".\SMALLC99.EXE"
 
