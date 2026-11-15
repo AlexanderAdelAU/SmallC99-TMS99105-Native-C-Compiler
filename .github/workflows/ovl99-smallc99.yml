@@ -42,5 +42,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: smallc99-ovl99-cross-build
-          path: build_tms/SMALLC99.EXE
+          path: |
+            build_tms/SMALLC99.EXE
+            build_tms/CC_STMT_R.A99
+            build_tms/CC_STMT_R.LST
+            build_tms/CC_STMT_R.L99
+            build_tms/OVLTHUNK.A99
+            build_tms/OVLTABLE.INC
+            build_tms/LINK.LOG
           if-no-files-found: error
