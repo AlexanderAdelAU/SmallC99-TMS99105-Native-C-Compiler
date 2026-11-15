@@ -94,6 +94,34 @@ generation code and write the general TMS99105 overlay contract.
 Keep automatic module/page placement as a **separate unimplemented
 feature**, not part of this port's acceptance claim.
 
+## Phase-1 progress (15 November 2026)
+
+- Created the isolated integration branch and a Windows GitHub Actions
+  cross-build workflow. The legacy R99 assembler assumes a C: build drive;
+  made the source/home flags depend on the actual build volume. This
+  retains the original `SCHC` flags when building on C: but supports D:
+  on GitHub's runner.
+- The **unchanged** legacy compiler successfully cross-built once that
+  host path issue was corrected
+  ([baseline build](https://github.com/AlexanderAdelAU/SmallC99-TMS99105-Native-C-Compiler/actions/runs/43710678745)).
+- Introduced `OVLMAP.TXT`, checked that its **14 descriptors are identical
+  in order and content** to the previously hard-coded `$OVERLAYS` table,
+  and loaded it via the validated `tools/ovlmanifest.ps1` parser.
+  `OVLDEFS.INC` remains authoritative for the original fixed IDs;
+  disagreement causes a pre-build error.
+- Rebuilt successfully after the manifest substitution
+  ([phase-1 build](https://github.com/AlexanderAdelAU/SmallC99-TMS99105-Native-C-Compiler/actions/runs/43710796883)).
+  DREL's existing STMT page-14 repair and CGEN page-11/13 ownership checks
+  still run and pass.
+- **No runtime assembly, C compiler source or linker has been replaced.**
+  The manually written stubs remain active. Executable byte-for-byte
+  identity with the baseline has not yet been independently demonstrated;
+  neither the emulator nor SBC runtime test has run on this branch.
+
+This first step proves that the existing multi-page layout can be maintained
+as an explicit manifest without disturbing the current Windows cross-build.
+It is not yet the completed OVL99 runtime port.
+
 ## Work that is explicitly *not* part of the initial branch
 
 - No changes to Windows LINK99, Small-C language semantics or BDOS.
