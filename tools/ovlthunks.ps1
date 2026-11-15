@@ -155,7 +155,10 @@ foreach ($e in $entries) {
 }
 foreach ($e in $entries) { $a += "        ENT $($e.Public)" }
 $a += '        END'
-[IO.File]::WriteAllText($Output,
+# .NET relative file paths use the process working directory, which can
+# differ from PowerShell's Set-Location (build_tms/). Resolve through PS.
+$resolvedOutput = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Output)
+[IO.File]::WriteAllText($resolvedOutput,
     ([string]::Join([Environment]::NewLine,$a)+[Environment]::NewLine),
     [Text.Encoding]::ASCII)
 Write-Output ("OVL99: generated {0} resident dispatch entries (2 top-level tail, {1} shared OVCALL)" -f $entries.Count,($entries.Count-2))
