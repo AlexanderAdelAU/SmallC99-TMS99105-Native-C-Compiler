@@ -239,3 +239,55 @@ Immediate controlled triage:
   for and the compiler has passed regression tests.
 - No merge into SMALLC99 `main` before independent cross-build,
   emulator and SBC checks.
+
+
+## OVL99 author's implementation cautions and exact INT2 locus
+
+The OVL99 author supplied five important constraints during the first SBC
+regression investigation:
+
+1. **LINK99 3.9.59 can silently misplace external references** if all four
+   `CC_EXPR` files are linked as *one* module spanning four pages (`-P4-7`).
+   They measured 110/189 wrong relocations and have an incomplete patch.
+   **Do not adopt that consolidation for this port**. The current build
+   deliberately links `CC_EXPR_A`, `CC_EXPR_B`, `CC_EXPR_C` and
+   `CC_EXPR_D` as separate R99 modules in separate physical pages. The
+   reported defect therefore does not, by itself, explain this run.
+2. **CLI ID 7 maps only segment A** and must remain non-reentrant: CLI
+   execution must never invoke a new thunk while this exception is active.
+   The current `OVCALL` has no same-ID shortcut; still audit its callers
+   and transient ownership carefully.
+3. **Overlay-owned data pointers may be invalidated by a remap**:
+   `swstab`, `macn`/`macq`, `code[]`, and overlay-local literals.
+   Specifically audit `docase()` → `constexpr()` and any
+   `error("...")` call originating on a `>A000` code page (CLI maps
+   that same segment). This is a general safety rule independent of
+   the new OVCALL's syntax.
+4. **Keep public links bound to resident thunks** if thunk/public
+   implementation symbols are aliased. Current SMALLC99 intentionally
+   uses separate `R_*` exported symbols, and its post-link resident
+   thunk audit passed; never weaken that check.
+5. **Function addresses taken inside an overlay** refer to the mapped
+   window, not automatically to a resident thunk. Audit for indirect
+   calls and escapes before treating function pointers as transparent.
+
+The first stage-marked SBC crash was after `OVT E: header emitted`
+and before `OVT F: parse complete`. The monitor reports
+`INT2 PC:92E4 WP:0230 ST:C487 SEG:0009 PAGE:0000`.
+
+The Windows CI artifact from run 43716634380 contains an
+`OVLTABLE.INC` row for logical STMT ID 2:
+`8,3,9,14,0,...`. The linker log resolves `dogoto` at `>92D2`,
+so `>92E4` is 18 bytes into the statement overlay's page-2
+`dogoto()` code. This makes **segment-9 mapping / restoration**
+a high-priority hypothesis. The monitor's `PAGE:0000` reading
+appears inconsistent with page 14, but confirm what that monitor
+register displays during INT2 before assuming it reports the
+pre-fault mapping. It is not yet proof of a specific OVCALL bug.
+
+**Next diagnostic, not yet a fix:** capture/check the expected segment-9
+physical page and saved `CUR_WINA_ID` around a nested statement →
+preprocessor/expression/CLI transition. Compare with the legacy stub
+and identify whether the page was never mapped, improperly restored,
+or remapped afterward. Keep the FileEdit runtime frozen and both
+SMALLC99 and LINK99 production branches untouched.
