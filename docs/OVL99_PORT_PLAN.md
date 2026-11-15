@@ -188,7 +188,9 @@ SMALLC99: compiling CTEST.C -> CTEST.A99
 INT2 PC:
 ```
 
-The SBC appeared to hang after printing `INT2 PC:`. The compiler had
+The SBC appeared to hang after printing `INT2 PC:`. The original compiler
+successfully passes this same LANGUAGE test, per the user's clarification.
+The new compiler had
 been running for a noticeable period, but its current phase and the
 source line at failure are not yet established. No complete INT2 register
 dump was captured. The locally supplied Windows build log *does* contain
@@ -203,8 +205,10 @@ merge into main.**
 Immediate controlled triage:
 1. Reset the SBC; test a very small, known-good C program with this
    same OVL99 executable (prefer `M38B.C` or another short fixture).
-2. Compile the exact same `CTEST.C` with the existing known-good
-   SMALLC99 from main; compare whether INT2 reproduces.
+2. **Confirmed by user:** `CTEST.C` is the principal `LANGTEST_LANGUAGE.C`
+   regression renamed; it compiles successfully with the original
+   known-good SMALLC99. Treat the INT2 as specific to the replacement
+   runtime until contradicted. Do not request a redundant baseline retest.
 3. After resetting, inspect whether `CTEST.A99` exists and how much
    was written. Do not infer it reached the end based only on elapsed
    time. Avoid shell `TYPE` for a long file while its separate
