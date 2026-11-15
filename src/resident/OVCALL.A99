@@ -46,12 +46,11 @@ OVPANIC:
 
 ; R1 = requested overlay owner, R2 = entry in >8000..>BFFF.
 ; The thunk *branches* here, so the Small-C call frame is unmodified.
+; SMALLC99's legacy framed dispatch always saves a frame, even when
+; CUR_WINA_ID matches the target. That is important when the CLI overlay
+; temporarily maps only segment A without changing segment-8 ownership:
+; a same-ID shortcut could incorrectly assume all four pages are intact.
 OVCALL:
-        C       R1,@CUR_WINA_ID
-        JNE     OVC1
-        B       *R2              ; already mapped, no extra frame
-
-OVC1:
         MOV     @OVSP,R0
         CI      R0,OVSTKEND
         JL      OVC2
