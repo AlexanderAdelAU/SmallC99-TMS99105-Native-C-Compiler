@@ -57,6 +57,7 @@ char **argv;
     puts("OVT D: first line read\n");
     header();                   /* emit native TMS module preamble */
     puts("OVT E: header emitted\n");
+    puts("OVT H: MAPDIAG-BUILD-2\n");
     parse();                    /* process ALL input */
     puts("OVT F: parse complete\n");
     trailer();                  /* close native TMS module */
