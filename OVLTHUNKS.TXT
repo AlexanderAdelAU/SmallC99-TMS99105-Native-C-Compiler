@@ -2,8 +2,11 @@
 # public resident name    logical overlay    DREL exported entry alias
 # Several public names may map to one real entry (R_EXPR and R_EXPRVAL).
 # The alias must be declared for that logical overlay in OVLMAP.TXT.
-R_DODECL   DECL  D_DODECL
-R_DOFN     DFUN  D_DOFN
+# Optional 'tail' marks the two original resident top-level entries that
+# must not consume an additional cross-overlay frame (R_DODECL/R_DOFN).
+# All ordinary entries use OVCALL's single shared 16-frame gate.
+R_DODECL   DECL  D_DODECL tail
+R_DOFN     DFUN  D_DOFN tail
 R_STMT     STMT  S_STMT
 R_PREP     PREP  P_PREP
 R_DEFINE   PREP  P_DEFINE
