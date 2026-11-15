@@ -175,6 +175,22 @@ OVLMGR_INITL:
 	PSEL_EN
 	RET
 
+; TEMPORARY: probe window state from CC_STMT_R dogoto() on SBC.
+; Output tag >D900, then logical segment-8 owner, tracked page at
+; segment 9, and compiler SP. This probe does not change mappings.
+	DXOP	WHEX,10
+MAPDIAG:
+	LI	R1,0D900H
+	WHEX	R1
+	MOV	@CUR_WINA_ID,R1
+	WHEX	R1
+	MOV	@CURRENT_PAGE+18,R1
+	WHEX	R1
+	MOV	SP,R1
+	WHEX	R1
+	RET
+
+	ENT	MAPDIAG
 	ENT	OVLMGR
 	ENT	OVLMGR_INIT
 	ENT	CUR_WINA_ID
