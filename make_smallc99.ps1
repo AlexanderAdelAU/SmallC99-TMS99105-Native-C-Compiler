@@ -100,7 +100,9 @@ function Assemble-R99 {
     Write-Output "`n================================================"
     Write-Output "Assembling $Name"
     Write-Output "================================================"
-    $output = & .\r99.exe $Name SCHC 2>&1 | Out-String
+    $drive = ([IO.Path]::GetPathRoot((Get-Location).Path)).Substring(0,1).ToUpperInvariant()
+    $r99Flags = "S${drive}H${drive}"
+    $output = & .\r99.exe $Name $r99Flags 2>&1 | Out-String
     $exitCode = $LASTEXITCODE
     Write-Output $output
     if ($output -notmatch "No error\(s\)") {
