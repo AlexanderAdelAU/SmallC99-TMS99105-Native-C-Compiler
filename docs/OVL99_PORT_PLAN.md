@@ -363,3 +363,59 @@ INT2. If H is absent, investigate branch/build/deployment identity.
 If H and P appear but D900 does not, investigate execution/mapping
 within `parse` before entering the real `dogoto` code. Do not
 conclude `dogoto` was executed merely from fault PC `>92E4`.
+
+
+## First complete SBC CTEST compile with generated OVL99 gate (16 November 2026)
+
+**Observed successful hardware run of the diagnostic build.** After a
+fresh TMS99105 disc-monitor reboot and XMODEM transfer of
+`SMALLC99.EXE` (load address `1000`), the user ran:
+
+```text
+SMALLC99 CTEST.C -V
+```
+
+Tera Term screenshots show:
+
+```text
+SMALLC99: compiling CTEST.C -> CTEST.A99
+OVT A: entering compinit
+OVT B: compinit complete
+OVT C: files open
+OVT D: first line read
+OVT E: header emitted
+OVT H: MAPDIAG-BUILD-2
+OVT P: entered parse
+D900 0002 000E ...  [WHEX emits adjacent 16-bit words]
+OVT F: parse complete
+OVT G: trailer emitted
+SMALLC99: wrote CTEST.A99
+```
+
+The user also displayed the tail of `CTEST.A99` and verified
+normal generated assembler lines finishing with `EVEN` and `END`.
+There was **no INT2** during this compile. `CTEST.C` is their
+renamed canonical `LANGTEST_LANGUAGE.C` regression.
+
+The mapping probe's `0002` identifies logical STMT owner and
+`000E` identifies tracked segment-9 physical page 14, as expected.
+This is software-tracked state and does not independently interrogate
+the hardware CRU register.
+
+**Acceptance progress:** full compiler invocation, parser completion,
+output-file close and generated assembly are verified on SBC with
+generated resident OVL99 dispatch. This is the first SBC PASS for the
+integration, but it is **not yet clean production-binary or full
+LANGUAGE runtime acceptance**.
+
+**Next gates:** Assemble `CTEST.A99` using `R99 CTEST`, link
+`LINK99 CTEST.R99 IOLIB99.LIB`, run `CTEST`, and confirm
+`tests: 133  passed: 133  failed: 0` and
+`ALL LANGUAGE TESTS PASSED`. Then reproduce the compile with the
+temporary `OVT` and `MAPDIAG` instrumentation removed from
+the integration branch, rebuilding and re-transferring the exact EXE.
+The earlier reproducible INT2 on the uninstrumented/incompletely
+identified build remains unexplained. The layout change and/or
+fresh transfer might account for the difference; do not claim
+the defect is fixed until the clean build also passes. No merge to
+`main` before those gates.
