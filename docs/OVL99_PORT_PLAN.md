@@ -122,6 +122,61 @@ This first step proves that the existing multi-page layout can be maintained
 as an explicit manifest without disturbing the current Windows cross-build.
 It is not yet the completed OVL99 runtime port.
 
+## Phase-2 progress: replace active handwritten trampolines (15 November 2026)
+
+The branch now contains a **cross-built, linked OVL99 dispatch replacement**:
+
+- `OVLTHUNKS.TXT` declares all 16 legacy public `R_*` names,
+  mapping each to a logical overlay ID and its existing DREL entry alias.
+- `tools/ovlthunks.ps1` checks the aliases against `OVLMAP.TXT`,
+  `OVLDEFS.INC`, DREL's published `OVLADDR.INC`, and the final
+  `OVLTABLE.INC` after the known STMT page-14 repair. A declared
+  entry must actually occupy a segment mapped by its logical owner.
+- The generator creates `OVLTHUNK.A99`, resident entry names linked to
+  the *same* C-facing symbols used by the original compiler.
+- `src/resident/OVCALL.A99` is now the **one resident framed gate**:
+  it saves the caller's return address and previous segment-8 logical
+  owner on a 16-frame stack, calls the existing multi-page `OVLMGR`,
+  runs the published implementation, then restores the caller's full
+  logical overlay mapping and original return address. R4 and Small-C
+  stack arguments retain their original semantics.
+- The two original top-level `R_DODECL` and `R_DOFN` entry points are
+  generated as **tail calls**, preserving their deliberate no-extra-frame
+  dispatch behaviour. CLI's ID 7 is still a segment-A-only exception,
+  and `R_GETOPTS`/`R_ERROR` now use the shared gate rather than
+  `CLISTUB` / manually framed `OVLSTUBS` bodies.
+- For SMALLC99, the generic OVCALL deliberately **does not skip the
+  mapping/restore on equal window-owner IDs**. Unlike FileEdit,
+  SMALLC99 permits CLI to transiently remap segment A without becoming
+  the segment-8 owner; this makes that shortcut unsafe in some nested
+  situations. The original framed trampolines always remapped.
+- `make_smallc99.ps1` no longer stages, assembles or links
+  `OVLSTUBS.A99` and `CLISTUB.A99`. Those source files remain in
+  the repository as historical references only. The retired
+  `R_CODEON` no-op is defined in the single gate to preserve its
+  compatibility symbol.
+- Linker output is audited: referenced `R_*` symbols must resolve
+  into resident `>1000–>7FFF`, **not** the remappable
+  `>8000–>BFFF` code window.
+
+**Latest build proof:**
+[Windows Actions run 43712761872](https://github.com/AlexanderAdelAU/SmallC99-TMS99105-Native-C-Compiler/actions/runs/43712761872)
+completed successfully, reporting:
+
+```text
+OVL99: generated 16 resident dispatch entries (2 top-level tail, 14 shared OVCALL)
+OVL99 linker audit: 15 referenced R_* names resolve in resident memory.
+BUILD SUCCESSFUL - MILESTONE 38e TWO-PAGE CODEGEN OVERLAY -
+```
+
+This is the **replacement of active handwritten trampolines** at
+build/link level. It does **not** yet establish runtime equivalence.
+Next acceptance gate: run the existing SMALLC99 emulator regression
+suite against the new EXE, compare generated assembly to the known-good
+compiler, and check on hardware (especially nested expressions,
+error reporting/CLI's segment-A-only mapping, switch cases, structs,
+and the multi-page CGEN backend). No merge to `main` before that.
+
 ## Work that is explicitly *not* part of the initial branch
 
 - No changes to Windows LINK99, Small-C language semantics or BDOS.
