@@ -272,6 +272,7 @@ needlval()
 */
 parse()
 {
+    puts("OVT P: entered parse\n");
     while(eof == 0) {
         if(amatch("extern", 6))
             R_DODECL(EXTERNAL);
