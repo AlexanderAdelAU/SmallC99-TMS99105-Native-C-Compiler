@@ -1,0 +1,20 @@
+# COMPATIBILITY exports to be generated, not handwritten trampoline bodies.
+# public resident name    logical overlay    DREL exported entry alias
+# Several public names may map to one real entry (R_EXPR and R_EXPRVAL).
+# The alias must be declared for that logical overlay in OVLMAP.TXT.
+R_DODECL   DECL  D_DODECL
+R_DOFN     DFUN  D_DOFN
+R_STMT     STMT  S_STMT
+R_PREP     PREP  P_PREP
+R_DEFINE   PREP  P_DEFINE
+R_INCLUDE  PREP  P_INCLUDE
+R_DOASM    PREP  P_DOASM
+R_CCOUT    CGEN  P_CCOUT
+R_SETCODES CGEN  P_SETCODES
+R_ERROR    CLI   P_ERRREP
+R_STRUCT   STRD  T_STRUCT
+R_TEST     EXPR  E_TEST
+R_EXPR     EXPR  E_EXPR
+R_CEXPR    EXPR  E_CEXPR
+R_EXPRVAL  EXPR  E_EXPR
+R_GETOPTS  CLI   P_GETOPTS
