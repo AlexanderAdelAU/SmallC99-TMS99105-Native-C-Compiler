@@ -327,3 +327,39 @@ the new `SMALLC99.EXE`, run `SMALLC99 CTEST.C -V`, and capture the
 last OVT marker plus any four WHEX words starting with `D900` and
 the INT2 register report. This is diagnostic only. Do not merge into
 `main` or treat the fault as resolved.
+
+
+## Second SBC regression: same INT2 without D900; verified build stamp
+
+After the first `MAPDIAG` diagnostic rebuild, the user ran
+`SMALLC99 CTEST.C -V` and again received `OVT A` through `OVT E`,
+then `INT2 PC:92E4 WP:0230 ST:C487 SEG:0009 PAGE:0000`. No `D900`
+words were visible. This **does not prove** the probe was absent: a
+wrong overlay mapping could prevent execution from reaching the probe
+even if the updated binary is on the SBC.
+
+The verified Windows build artifact with the probe **was different**
+from the earlier executable: its `CC_STMT_R.A99` has
+`CALL @MAPDIAG` as the first instruction in `dogoto()`. The
+`dogoto` linker anchor remains `>92D2`, so the unchanged fault PC
+is insufficient to establish either an old binary or an actual
+`dogoto` entry. No runtime fix has been made yet.
+
+To separate SBC deployment/version from a pre-probe execution fault,
+added two distinct **resident, console-only** markers:
+- `OVT H: MAPDIAG-BUILD-2` immediately after `OVT E`, before
+  calling `parse()`
+- `OVT P: entered parse` at the beginning of resident `parse()`
+
+This build passed Windows CI
+[run 43719536877](https://github.com/AlexanderAdelAU/SmallC99-TMS99105-Native-C-Compiler/actions/runs/43719536877).
+The downloadable `SMALLC99.EXE` was checked and **contains both
+marker strings** (they were absent from the previous diagnostic EXE).
+The instrumentation at `dogoto` (`D900`) remains present.
+
+Next SBC test: pull the integration branch, rebuild and transfer that
+fresh EXE, run CTEST, and report whether **H** and **P** appear before
+INT2. If H is absent, investigate branch/build/deployment identity.
+If H and P appear but D900 does not, investigate execution/mapping
+within `parse` before entering the real `dogoto` code. Do not
+conclude `dogoto` was executed merely from fault PC `>92E4`.
