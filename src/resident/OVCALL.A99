@@ -1,0 +1,87 @@
+; OVCALL.A99 -- single resident OVL99 cross-overlay call gate for SMALLC99.
+; Replaces the repeated save/map/call/restore bodies in legacy OVLSTUBS.
+; A generated thunk loads R1=logical overlay ID, R2=DREL entry address,
+; then tail branches here, leaving Small-C's original call frame intact.
+;
+; The manager handles up to five segment/page pairs per logical overlay.
+; Restoring a saved ID remaps ALL its virtual segments (e.g., the four
+; pages of the 16 KiB expression parser). CLI is a documented exception
+; that maps segment A only; it does not become the segment-8 owner.
+;
+; Only resident code may drive a change of overlay ownership. No pointer
+; to static data in a remapped overlay may survive an overlay switch.
+;
+        DXOP    CALL,6
+        DXOP    RET,7
+        DXOP    WHEX,10
+
+R0      EQU     0
+R1      EQU     1
+R2      EQU     2
+SP      EQU     10
+
+        EXT     OVLMGR
+        EXT     CUR_WINA_ID
+
+OVDEPTH EQU     16
+
+; Return address + previous logical owner, two words per live switch.
+OVSTACK:
+        BSS     OVDEPTH*4
+OVSTKEND:
+OVSP:
+        WORD    OVSTACK
+
+; Invoked by CC_PORT.A99 after OVLMGR_INIT and CLR CUR_WINA_ID.
+; Do not write vectors into shell COMMON at >02A2->02B4.
+STUBINIT:
+        LI      R0,OVSTACK
+        MOV     R0,@OVSP
+        RET
+
+OVPANIC:
+        LI      R1,0DEADH
+        WHEX    R1
+        JMP     OVPANIC
+
+; R1 = requested overlay owner, R2 = entry in >8000..>BFFF.
+; The thunk *branches* here, so the Small-C call frame is unmodified.
+OVCALL:
+        C       R1,@CUR_WINA_ID
+        JNE     OVC1
+        B       *R2              ; already mapped, no extra frame
+
+OVC1:
+        MOV     @OVSP,R0
+        CI      R0,OVSTKEND
+        JL      OVC2
+        B       @OVPANIC
+OVC2:
+        MOV     *SP+,*R0+        ; caller return word
+        MOV     @CUR_WINA_ID,*R0+ ; previous segment-8 owner
+        MOV     R0,@OVSP
+        DECT    SP
+        MOV     R2,*SP           ; preserve callee entry across mapper
+        CALL    @OVLMGR
+        MOV     *SP+,R2
+        CALL    *R2              ; preserve normal Small-C ABI and R4
+        MOV     @OVSP,R2
+        DECT    R2
+        MOV     *R2,R1           ; owner to restore (entire mapping)
+        DECT    R2
+        MOV     R2,@OVSP
+        CALL    @OVLMGR
+        MOV     @OVSP,R2
+        DECT    SP
+        MOV     *R2,*SP          ; original return address
+        RET
+
+; Retired compatibility hook, historically R_CODEON in OVLSTUBS.
+; It deliberately does nothing; ID 4 now belongs to PREP.
+R_CODEON:
+        RET
+
+        ENT     OVCALL
+        ENT     STUBINIT
+        ENT     R_CODEON
+        END
