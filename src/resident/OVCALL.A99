@@ -22,6 +22,7 @@ SP      EQU     10
 
         EXT     OVLMGR
         EXT     CUR_WINA_ID
+        EXT     macptr          ; temporary resident macro-state probe
 
 OVDEPTH EQU     16
 
@@ -73,7 +74,30 @@ OVC2:
         MOV     @OVSP,R2
         DECT    SP
         MOV     *R2,*SP          ; original return address
+; TEMP INT2 diagnostic: ordinary Small-C return must never enter <1000.
+; If the OVCALL return frame was corrupted, stop with an unambiguous
+; signature before XOP7 attempts to execute in the monitor workspace.
+        MOV     *SP,R0
+        CI      R0,01000H
+        JHE     OVRETOK
+        LI      R1,0D701H
+        WHEX    R1
+        MOV     R0,R1
+        WHEX    R1
+        B       @OVPANIC
+OVRETOK:
         RET
+
+; TEMP: bounded resident macro queue probe, independent of mapped pages.
+; Prints tag D110 and current resident macptr as two 16-bit words.
+MACDIAG:
+        LI      R1,0D110H
+        WHEX    R1
+        MOV     @macptr,R1
+        WHEX    R1
+        RET
+
+        ENT     MACDIAG
 
 ; Retired compatibility hook, historically R_CODEON in OVLSTUBS.
 ; It deliberately does nothing; ID 4 now belongs to PREP.
