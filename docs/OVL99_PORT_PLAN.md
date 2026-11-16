@@ -706,3 +706,32 @@ by XMODEM and run `SMALLC99 <name>.C`. No assemble/link/run needed
 to localize the compiler crash. Use GitHub RAW file links for the
 source downloads because earlier conversation sandbox links failed
 repeatedly. No production compiler change or merge was made.
+
+
+## High-yield second-round source bisection: first three fixtures all pass
+
+User confirmed **GDECL.C, GPAD.C and GHALF.C each compile** on the
+TMS99105 SBC using the unchanged, stage-instrumented OVL99 SMALLC99.
+These results make a simple macro buffer limit, the initial globals,
+and a fixed source-file size threshold unlikely. We do not yet know
+whether the original SBC `CTEST.C` bytes match the checked-in canonical
+LANGTEST source.
+
+Three additional, **complete source files** were created under
+`tests/` and round-trip checked against GitHub's fetched contents:
+
+- `GTHREE.C` (7,681 bytes): exact canonical LANGUAGE source through
+  line 459, i.e. through `t_func()`, with a small `main`.
+- `GALL.C` (9,314 bytes): exact canonical LANGUAGE source through line
+  546, i.e. **all preceding test functions**, with a small `main`
+  replacing the original driver.
+- `GFULL.C` (9,820 bytes): **byte-for-byte text copy** of the complete
+  checked-in `LANGTEST_LANGUAGE.C`, only the filename changes.
+
+These experiments should run on one **unchanged** compiler EXE.
+If GFULL compiles and SBC CTEST does not, check the SBC CTEST.C file's
+source bytes, transfer integrity, CRLF endings, or file-name handling
+rather than changing OVCALL. If GFULL fails but GALL succeeds, isolate
+the original main body; if GALL fails, use GTHREE to split the remaining
+function bodies. Compilation success does not establish runtime
+correctness for these reduced programs, and no merge is approved.
