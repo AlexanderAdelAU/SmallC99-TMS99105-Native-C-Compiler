@@ -234,10 +234,12 @@ symname(sname) char *sname; {
 ** too tight for the formatting.
 */
 extern int errcnt;
+extern MACDIAG();  /* TEMP: macro pointer when an error is reported */
 error(msg) char *msg; {
   if(errflag) return;
   errflag = 1;
   ++errcnt;
+  MACDIAG();      /* TEMP: print D110 and macptr before CLI overlay */
   R_ERROR(msg);
   }
 
