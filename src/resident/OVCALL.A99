@@ -23,6 +23,7 @@ SP      EQU     10
         EXT     OVLMGR
         EXT     CUR_WINA_ID
         EXT     macptr          ; temporary resident macro-state probe
+        EXT     lineno          ; TEMP: current source line from CC_DATA
 
 OVDEPTH EQU     16
 
@@ -96,6 +97,22 @@ MACDIAG:
         MOV     @macptr,R1
         WHEX    R1
         RET
+
+; TEMP: no-overlays source-line/stack/owner diagnostic.
+; Tag D120, followed by primary source line, current R10 (SP)
+; and CUR_WINA_ID. Printed before/after STATIC declaration dispatch.
+LINDIAG:
+        LI      R1,0D120H
+        WHEX    R1
+        MOV     @lineno,R1
+        WHEX    R1
+        MOV     SP,R1
+        WHEX    R1
+        MOV     @CUR_WINA_ID,R1
+        WHEX    R1
+        RET
+
+        ENT     LINDIAG
 
         ENT     MACDIAG
 
