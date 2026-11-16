@@ -51,6 +51,7 @@ char **argv;
     compinit();                 /* initialise compiler and TMS backend */
     if(openfile() == NO)        /* open initial input and output */
         return;
+    MACDIAG();                  /* TEMP: macptr before firstline */
     firstline();                /* fetch first source line */
     header();                   /* emit native TMS module preamble */
     MACDIAG();                  /* TEMP: emit D110 + initial macptr */
