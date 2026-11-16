@@ -7,6 +7,7 @@ on:
     paths:
       - 'src/resident/SMALLC99.C'
       - 'src/resident/CC_RESIDENT.C'
+      - 'src/resident/CC_SCAN_SYM.C'
       - 'src/resident/OVCALL.A99'
       - '.github/workflows/build-ovl99-clean-ab.yml'
   workflow_dispatch:
