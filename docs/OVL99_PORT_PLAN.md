@@ -455,3 +455,5 @@ new `SMALLC99.EXE` onto the SBC, compile CTEST.C again, assemble/link/
 run CTEST, and require the same 133/133 result without any diagnostics.
 Then proceed to STRUCTTEST, PTRTEST, ARRTEST and error cases before
 considering merge. `main` remains unchanged.
+
+**Clean Windows build verification:** GitHub Actions [run 43784485116](https://github.com/AlexanderAdelAU/SmallC99-TMS99105-Native-C-Compiler/actions/runs/43784485116) PASSED after removing instrumentation. It generated 16 OVL99 dispatch entries, audited 15 referenced `R_*` symbols in resident memory, validated STMT/CGEN ownership, and linked `SMALLC99.EXE`. **Clean SBC runtime has not yet been retested.**
