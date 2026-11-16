@@ -1,5 +1,11 @@
 # OVL99 integration into SMALLC99 — staged acceptance plan
 
+> **Historical.** This is the record of how OVL99 was brought into SMALLC99.
+> The generators it describes (`OVLTHUNKS.TXT`, `tools/ovlmanifest.ps1`,
+> `tools/ovlthunks.ps1`, `drel -i`, `OVLDEFS.INC`, the STMT row repair) were
+> later replaced by LINK99 `-Y`, which builds the table and thunks from
+> `OVLMAP.TXT`. See the Readme's OVL99 section for the current scheme.
+
 **Scope:** `ovl99-smallc99-integration` only. `main` remains the known-good
 SMALLC99 implementation; the validated FileEdit integration remains frozen in
 the separate TMS99105-Native-Toolchain repository.

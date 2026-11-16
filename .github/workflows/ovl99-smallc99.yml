@@ -28,7 +28,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           New-Item -ItemType Directory -Force -Path 'C:\Development-W11DEV\Eclipse Workspace\TMS99105_SBC\MONITOR' | Out-Null
-      - name: Compile, assemble, validate overlay tables and link SMALLC99
+      - name: Compile, assemble and link SMALLC99 (link99 -Y builds the overlay table)
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
@@ -47,7 +47,6 @@ jobs:
             build_tms/CC_STMT_R.A99
             build_tms/CC_STMT_R.LST
             build_tms/CC_STMT_R.L99
-            build_tms/OVLTHUNK.A99
-            build_tms/OVLTABLE.INC
+            build_tms/OVLGLUE.R99
             build_tms/LINK.LOG
           if-no-files-found: error
