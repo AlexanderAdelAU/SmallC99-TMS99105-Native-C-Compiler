@@ -302,7 +302,9 @@ parse()
             puts("OVD4: after R_DOFN\n");
         }
 
+        puts("OVB1: before end-of-loop blanks\n");
         blanks();
+        puts("OVB2: after end-of-loop blanks\n");
     }
 }
 
