@@ -141,9 +141,9 @@ $LIB_INPUTS = @($RUNTIME_OBJECTS) + @($RUNTIME_LIBRARIES) + @($RUNTIME_INDEXES)
 # This deliberately copies matching .NDX files alongside .LIB files.
 $LIB_COPY_PATTERNS = @("*.R99", "*.LIB", "*.NDX")
 
-# Phase 1 of the OVL99 port: declare the existing physical layout in a
-# separate map, preserving the current 8 overlay IDs and all 14 DREL
-# descriptors byte-for-byte. Legacy OVLSTUBS.A99 remains in use for now.
+# The OVL99 overlay map: the physical layout of all 14 overlay modules,
+# their 8 overlay IDs and their DREL descriptors. Cross-overlay calls go
+# through OVCALL.A99 and the thunks generated from OVLTHUNKS.TXT below.
 $OVLMAP_FILE = Join-Path $PSScriptRoot "OVLMAP.TXT"
 $OVLMAP_READER = Join-Path $PSScriptRoot "tools\ovlmanifest.ps1"
 $OVLDEFS_FILE = Join-Path $PSScriptRoot "include\OVLDEFS.INC"
@@ -152,7 +152,7 @@ foreach ($requiredMapFile in @($OVLMAP_FILE, $OVLMAP_READER, $OVLDEFS_FILE)) {
 }
 $OVERLAYS = @(& $OVLMAP_READER -Map $OVLMAP_FILE -Defs $OVLDEFS_FILE)
 if ($OVERLAYS.Count -eq 0) { throw "*** BUILD FAILED: no OVL99 manifest entries" }
-Write-Output ("OVL99 phase-1 manifest: " + $OVERLAYS.Count + " physical modules; existing OVLSTUBS unchanged.")
+Write-Output ("OVL99 manifest: " + $OVERLAYS.Count + " physical modules.")
 
 # Overlay ownership contract.  Framed overlay dispatch saves/restores only
 # CUR_WINA_ID, and CUR_WINA_ID is defined by the overlay mapped into virtual

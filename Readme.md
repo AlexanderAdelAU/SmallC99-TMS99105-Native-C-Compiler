@@ -131,8 +131,8 @@ per segment. SMALLC99 uses them like this:
 | Region | Contents |
 |---|---|
 | Segment 0 | Common memory: the shell's workspace, FCB, BDOS gate and stack |
-| Segments 1–7 (`>1000`–`>7857`) | The resident compiler, always mapped: driver, scanner, symbol tables, output layer, overlay manager |
-| `>7858`–`>7FFF` | The C run-time heap (file buffers; an `#include` needs ~1,700 bytes of it) |
+| Segments 1–7 (`>1000`–`>7591`) | The resident compiler, always mapped: driver, scanner, symbol tables, output layer, overlay manager, OVL99 call gate and thunks |
+| `>7592`–`>7FFF` | The C run-time heap, about 2,670 bytes (file buffers; an `#include` needs ~1,700 bytes of it) |
 | Segments 8–B (`>8000`–`>BFFF`) | The overlay window: one overlay owns it at a time |
 | Segments C–F | The shell, the BDOS and the ROM — never written by the compiler |
 
@@ -153,20 +153,64 @@ per segment. SMALLC99 uses them like this:
 | 7 | `CLI` — command line | Options and file names at start-up; error reports |
 | 8 | `STRD` — struct declarations | `struct`/`union` tags and member lists; the row types of multi-dimensional arrays |
 
+### OVL99: how a call crosses overlays
+
+SMALLC99 uses **OVL99**, the overlay runtime it shares with FileEdit. Every
+cross-overlay call goes through one resident gate, and the per-entry glue is
+generated at build time from two declaration files instead of being written
+by hand.
+
+```
+overlay code           resident                                 overlay code
+  statement()  ──►  R_STMT thunk  ──►  OVCALL  ──►  map STMT  ──►  S_STMT
+                    LI   R1,OVL_STMT     │ push return word + owner
+                    LI   R2,S_STMT       │ map callee, CALL it
+                    B    @OVCALL         │ pop, remap caller's whole overlay
+                                         ▼ return to caller
+```
+
+| File | Role |
+|---|---|
+| `OVLMAP.TXT` | Every overlay module: its physical page, overlay name and ID, and the entry points `drel` publishes for it |
+| `OVLTHUNKS.TXT` | The 16 resident call names (`R_STMT`, `R_TEST`, `R_ERROR` …) and the overlay entry each one reaches |
+| `tools/ovlmanifest.ps1` | Reads `OVLMAP.TXT`, checks it against `include/OVLDEFS.INC`, and gives the build its `drel` descriptors |
+| `tools/ovlthunks.ps1` | After `drel` has published the entry addresses, writes `OVLTHUNK.A99`: one 3-instruction thunk per name |
+| `src/resident/OVCALL.A99` | The single call gate, replacing the 15 hand-written trampolines of `OVLSTUBS.A99` and `CLISTUB.A99` |
+
+**What the gate does.** A thunk loads the overlay ID and entry address and
+branches to `OVCALL`, leaving the C call frame untouched. `OVCALL` moves the
+caller's return word and the current window owner onto a 16-frame stack, maps
+the callee's overlay, calls it, then remaps the caller's **entire** overlay
+(all four pages for `EXPR`) and returns. It always takes a frame, even when the
+target already owns the window, because the CLI overlay maps only segment A
+without becoming the owner. A stack overflow prints `>DEAD` and stops.
+
+The two top-level entries called from the resident `parse()`, `R_DODECL` and
+`R_DOFN`, map and branch with no frame, as before.
+
+**Adding a cross-overlay entry** is two lines: the entry's `drel` alias in
+`OVLMAP.TXT`, and its `R_` name in `OVLTHUNKS.TXT`. There is no assembly to
+write.
+
+**Checked by the build:**
+
+- every overlay except the CLI maps segment 8 first, exactly once;
+- every thunk targets an entry that `drel` actually published, in the overlay
+  the thunk maps;
+- after linking, every `R_*` reference resolves inside resident memory, never
+  into the overlay window.
+
 **Calling rules**
 
 - An overlay calls resident code, or other pages of its own overlay, directly.
 - It never calls a different overlay directly. It calls a resident bridge
-  (`statement()`, `test()`, `expression()` …), which calls a **framed
-  trampoline** (`R_STMT`, `R_TEST`, `R_STRUCT`, `R_ERROR` …). The trampoline
-  saves the return address and the current owner on `TRSTACK`, maps the
-  callee's overlay, calls its fixed entry point, then restores the caller's
-  overlay.
-- Segment 8 always belongs to the current owner (the CLI is the one
-  exception), and nothing may pass a pointer to one overlay's static data
-  through a trampoline.
+  (`statement()`, `test()`, `expression()` …), which calls the `R_` thunk.
+- Nothing may pass a pointer to one overlay's static data or string literals
+  to an entry in another overlay: the callee's pages can occupy the same
+  segment. `swstab`, the macro pools and `code[]` all live in overlay pages.
 
-See `docs/OVERLAY_OWNERSHIP_CONTRACT.md` for the full contract.
+See `docs/OVERLAY_OWNERSHIP_CONTRACT.md` for the ownership contract and
+`docs/OVL99_PORT_PLAN.md` for how the port was staged and tested on the SBC.
 
 ### How a compile flows
 
@@ -240,7 +284,7 @@ If you only want to compile on the SBC, copy its `bin/` folder and
 |---|---|
 | `smallcp.exe` (Small-C/Plus 1.06g) | Compiles SMALLC99's own C sources |
 | `r99.exe` | TMS9900 relocating assembler |
-| `link99.exe` **3.9.58 or later** | Linker; produces the paged EXE. Earlier versions mis-link programs over 64K of code |
+| `link99.exe` **3.9.59 or later** | Linker; produces the paged EXE. 3.9.58 fixed programs over 64K of code; 3.9.59 fixed a word at link-buffer offset `>FFFE` being taken for a marker and left unrelocated |
 | `drel.exe` | Object-file lint; generates `OVLADDR.INC` and `OVLTABLE.INC` |
 
 ### Build
@@ -249,10 +293,12 @@ If you only want to compile on the SBC, copy its `bin/` folder and
 .\make_smallc99.ps1 *> build.log
 ```
 
-The script compiles and assembles the overlays, generates the overlay tables
-with `drel`, compiles the resident part, links `SMALLC99.EXE`, audits the
-result, and deploys the compiler and the test programs to the monitor
-folder. `*>` captures every output stream, including errors.
+The script reads the overlay map, compiles and assembles the overlays,
+generates the overlay tables with `drel`, generates the OVL99 thunks,
+compiles the resident part, links `SMALLC99.EXE`, audits the result
+(including where every `R_*` call resolved), and deploys the compiler and the
+test programs to the monitor folder. `*>` captures every output stream,
+including errors.
 
 ### Using it on the SBC
 
@@ -289,9 +335,11 @@ on the hardware has matched the emulator exactly.
 
 | Folder | Contents |
 |---|---|
-| `src/resident/` | Driver, scanner, symbol tables, data, output layer, overlay manager, trampolines, `elsize()` |
+| `src/resident/` | Driver, scanner, symbol tables, data, output layer, overlay manager (`OVLMGR.A99`), OVL99 call gate (`OVCALL.A99`), `elsize()`. `OVLSTUBS.A99` and `CLISTUB.A99` are the retired hand-written trampolines, kept for reference and no longer built |
 | `src/overlays/` | The overlay modules: `CC_EXPR_A`–`D`, `CC_STMT`, `CC_STMT_R`, `CC_DECL`, `CC_STRD`, `CC_PREP`, `CC_MACS`, `CC_DFUN`, `CC_CG99`, `CC_CG99T`, `CC_CL99` |
-| `include/` | `OVLDEFS.INC` (overlay IDs) |
+| `include/` | `OVLDEFS.INC` (overlay IDs; the build checks it agrees with `OVLMAP.TXT`) |
+| `OVLMAP.TXT`, `OVLTHUNKS.TXT` | The OVL99 overlay map and resident call names |
+| `tools/` | OVL99 generators: `ovlmanifest.ps1`, `ovlthunks.ps1` |
 | `lib/` | C run-time objects and libraries (`CLIB99`, `IOLIB99`) |
 | `tests/` | Regression programs |
 | `toolchain/` | Host tools |
@@ -325,6 +373,9 @@ overlay architecture (the M3x series), then:
 - **Pointers to pointers and arrays of pointers** — pointer depth in the type
   byte; the compiler's own sources now compile under SMALLC99.
 - **Multi-dimensional arrays** — row types in the tag table.
+- **OVL99** — the 15 hand-written cross-overlay trampolines replaced by one
+  resident gate and thunks generated from `OVLMAP.TXT` and `OVLTHUNKS.TXT`;
+  the resident part 710 bytes smaller. Tested on the SBC.
 
 Along the way the host toolchain was fixed in several silent failure modes:
 link99 (code over 64K, external-plus-offset relocation, library-search
