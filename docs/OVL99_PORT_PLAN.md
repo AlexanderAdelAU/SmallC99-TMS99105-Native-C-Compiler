@@ -668,3 +668,41 @@ These markers do not change the macro pool capacity, the generated
 thunks, OVCALL or overlay page assignments. They **do change resident
 code layout**, so a passing run is diagnostic rather than a clean
 runtime acceptance. Retain a known-good `main` and do not merge.
+
+
+## Source-bisection probes following OVLPROBE Test 5 PASS (16 Nov 2026)
+
+User confirmed OVLPROBE Test 5 compiles successfully with the original
+five active macro definitions and the first eight uninitialized globals,
+including `int garr[10];`. The generated OVL99 diagnostic compiler was
+held constant across these trials. The original CTEST had been observed
+to crash as early as the first few global declarations; the small
+program passes beyond that point, so changing **one declaration at a
+time is no longer a useful discriminator**. Source size, contents
+beyond the current line, input file layout, and code-sensitive state
+are now genuine candidates; none is yet proven.
+
+For a much faster binary-search experiment, three standalone source
+files were generated and each fetched back byte-for-byte to verify
+creation on this **integration branch only**:
+
+- `tests/GDECL.C`, **922 bytes**: original CTEST prelude and
+  **all** global declarations, including initializers, followed by
+  a minimal `main`. If it fails, investigate global initializer
+  compilation, not just the uninitialized declarations.
+- `tests/GPAD.C`, **9,820 bytes**: identical executable C content
+  to GDECL but padded with a trailing multiline comment to the same
+  text length as `LANGTEST_LANGUAGE.C`. If GDECL passes and GPAD
+  fails, prioritize source-stream length / comment processing /
+  file read behaviour, without blaming the globals.
+- `tests/GHALF.C`, **5,523 bytes**: original CTEST first 315
+  lines (including the beginning language-test functions) followed
+  by a simple `main`. If GDECL and GPAD pass but GHALF fails, the
+  source-dependent failure arises from first-half function content,
+  not mere size.
+
+Keep the **same** `SMALLC99.EXE` throughout; send each input file
+by XMODEM and run `SMALLC99 <name>.C`. No assemble/link/run needed
+to localize the compiler crash. Use GitHub RAW file links for the
+source downloads because earlier conversation sandbox links failed
+repeatedly. No production compiler change or merge was made.
