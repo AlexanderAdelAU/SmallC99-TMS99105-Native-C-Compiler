@@ -457,3 +457,41 @@ Then proceed to STRUCTTEST, PTRTEST, ARRTEST and error cases before
 considering merge. `main` remains unchanged.
 
 **Clean Windows build verification:** GitHub Actions [run 43784485116](https://github.com/AlexanderAdelAU/SmallC99-TMS99105-Native-C-Compiler/actions/runs/43784485116) PASSED after removing instrumentation. It generated 16 OVL99 dispatch entries, audited 15 referenced `R_*` symbols in resident memory, validated STMT/CGEN ownership, and linked `SMALLC99.EXE`. **Clean SBC runtime has not yet been retested.**
+
+## Clean-build SBC regression (16 November 2026)
+
+The user replaced the successful diagnostic `SMALLC99.EXE` via XMODEM
+without showing an intervening SBC reboot, then ran `SMALLC99 CTEST.C -V`.
+The program printed its normal compiling banner, then INT2:
+
+```text
+INT2 PC:0DC6 WP:0230 ST:C087 SEG:0000 PAGE:0000
+```
+
+The previously generated CTEST executable had just passed all 133
+LANGUAGE tests in the same shell session. The earlier successful
+instrumented compiler was installed after a visible fresh boot. Thus
+**SBC session state / repeated EXE loading is a concrete confounder**;
+this fault must not yet be attributed to removal of `OVT`/`MAPDIAG`.
+A fault PC below `>1000` does not identify a C function in the
+resident compiler or its `>8000–>BFFF` overlays.
+
+The user also suspected the preprocessor macro string might be full.
+The unchanged baseline compiler has `MACNBR=150`, `MACQSIZE=1050`,
+`MACMAX=1049` in `CC_PREP.C` / `CC_MACS.C`. The checked-in
+`LANGTEST_LANGUAGE.C` has seven `#define` lines with only ~26 bytes
+of replacement text, so a legitimate macro overflow is not expected.
+`macptr` is resident and the macro pools `macn/macq` reside in the
+second PREP physical code page. `ccinit()` does not explicitly reset
+`macptr` or clear these pools; rely on correct new-process loading/
+initialization unless a repeat-run test proves that assumption unsafe.
+Do not increase queue size or blame the call gate without evidence.
+
+**Next discriminating test:** Fresh SBC reboot, transfer the already
+cross-build-passing clean `SMALLC99.EXE`, run `SMALLC99 CTEST.C -V`
+as the first compiler invocation, and capture whether compilation
+completes. If it does, repeat the **same** binary after exiting and
+note whether the second invocation fails. If it fails even fresh,
+resume OVCALL/layout/stack investigation with a minimal resident
+startup marker, and compare a known-good `main` compiler under the
+identical fresh boot procedure.
