@@ -55,6 +55,7 @@ char **argv;
     firstline();                /* fetch first source line */
     header();                   /* emit native TMS module preamble */
     MACDIAG();                  /* TEMP: emit D110 + initial macptr */
+    puts("OVBUILD 16NOV-BLANKS-01\n"); /* TEMP: identify exact SBC image */
     parse();                    /* process ALL input */
     trailer();                  /* close native TMS module */
     if(closefile() == NO)       /* explicitly close both files */
