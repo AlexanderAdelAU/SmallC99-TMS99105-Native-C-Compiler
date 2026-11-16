@@ -632,3 +632,39 @@ appears but `OVD2` does not, inspect the declaration overlay
 and its callee/return path. If both appear, the failure occurs
 subsequently. Do not consider the earlier diagnosis of a “macro
 string queue full” to be substantiated by this trace.
+
+
+## Repeated five-define trace; distinguish build identity and post-define blanks (16 November 2026)
+
+The second SBC run of `SMALLC99 CTEST.C -V` produced **exactly the
+same** five successful `OVP1/R_DEFINE/OVP2` sequences as the previous
+one. `macptr` rose `0000->0003->000C->000D->0010->0013`, then
+`INT2 PC:0FC2 WP:0230 ST:C487 SEG:0000 PAGE:0000`. Crucially
+there were **no `OVD1`/`OVD2`/ `OVD3`/`OVD4` markers**.
+
+The absence of `OVD1` is *not* evidence that `R_DODECL(EXTERNAL)`
+itself faulted: the resident parser must first finish its previous
+loop's `blanks()`, which calls `R_PREP` to handle the remaining
+conditional `#else`/`#endif` and advance to
+`extern int putchar();`. A fault inside that step would occur **before**
+the next `amatch("extern",6)`, and therefore before `OVD1`.
+The same output is also consistent with an older SBC executable not
+containing the new `OVD` source changes.
+
+To distinguish these alternatives, added two **new resident-only**
+diagnostic checkpoints:
+
+- `OVBUILD 16NOV-BLANKS-01`, always emitted in the driver after the
+  preprocessor/header setup, before `parse()`. If absent, the SBC
+  is not executing this exact diagnostic image.
+- `OVB1: before end-of-loop blanks` and
+  `OVB2: after end-of-loop blanks`, around the parser's final
+  `blanks()` call. If the last `OVB1` lacks `OVB2`, the
+  subsequent conditional-preprocessor/source-line advance is suspect.
+  If `OVB2` appears and the next `OVD1` does not, inspect the top
+  of the next parse iteration, including `amatch`.
+
+These markers do not change the macro pool capacity, the generated
+thunks, OVCALL or overlay page assignments. They **do change resident
+code layout**, so a passing run is diagnostic rather than a clean
+runtime acceptance. Retain a known-good `main` and do not merge.
