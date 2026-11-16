@@ -278,8 +278,11 @@ parse()
        No overlay mapping changes. */
     puts("OVP0: parse entered\n");
     while(eof == 0) {
-        if(amatch("extern", 6))
+        if(amatch("extern", 6)) {
+            puts("OVD1: before R_DODECL(EXTERNAL)\n");
             R_DODECL(EXTERNAL);
+            puts("OVD2: after R_DODECL(EXTERNAL)\n");
+        }
         else if(R_DODECL(STATIC))
             ;
         else if(match("#asm"))
@@ -293,8 +296,11 @@ parse()
             MACDIAG();
             puts("OVP2: after R_DEFINE\n");
         }
-        else
+        else {
+            puts("OVD3: before R_DOFN\n");
             R_DOFN();
+            puts("OVD4: after R_DOFN\n");
+        }
 
         blanks();
     }
