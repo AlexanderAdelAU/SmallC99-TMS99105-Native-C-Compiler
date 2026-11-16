@@ -12,6 +12,7 @@
 #define NAMEMAX 14
 
 extern PORT_INIT();
+extern MACDIAG();               /* TEMP: resident macptr snapshot */
 extern int errcnt;          /* error count (CC_DATA); error() in CC_SCAN_SYM */
 extern R_GETOPTS();
 extern R_PREP();
@@ -52,6 +53,7 @@ char **argv;
         return;
     firstline();                /* fetch first source line */
     header();                   /* emit native TMS module preamble */
+    MACDIAG();                  /* TEMP: emit D110 + initial macptr */
     parse();                    /* process ALL input */
     trailer();                  /* close native TMS module */
     if(closefile() == NO)       /* explicitly close both files */
