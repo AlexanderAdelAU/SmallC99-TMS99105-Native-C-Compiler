@@ -53,19 +53,26 @@ state.
 
 ## Build-time enforcement
 
-`make_smallc99.ps1` fails the build if any of these conditions is violated:
+LINK99 (`-YOVLMAP.TXT`, 3.10.0 or later) builds the overlay table and fails
+the link if:
 
-1. Every generated overlay row except explicit one-shot exceptions starts with
-   segment 8 and maps segment 8 exactly once.
-2. CGEN ID 6 is exactly `8,11,9,13,0,0,0,0,0,0`.
-3. `P_CCOUT` resolves inside `>8000..>8FFF`.
-4. `P_SETCODES` resolves inside `>9000..>9FFF`.
+1. Any overlay row does not start with segment 8, or maps it more than once,
+   except an overlay the map declares `guest` (CLI), which must NOT map it.
+2. An overlay's segments are not contiguous, leave >8000-BFFF, or a physical
+   page is used twice.
+
+`make_smallc99.ps1` then fails the build, from the linker's own output, if:
+
+3. CGEN is not exactly segment/page `8/11 9/13`, STMT not `8/3 9/14`, or CLI
+   not `A/12`.
+4. `ccout` does not resolve inside `>8000..>8FFF`, or `setcodes` inside
+   `>9000..>9FFF`.
 5. `PORT_INIT` does not clear `CUR_WINA_ID` immediately after `OVLMGR_INIT` and
    before `STUBINIT`.
-6. CLI ID 7 remains the documented top-level one-shot exception.
+6. Any `R_*` reference resolves outside resident memory.
 
-A future overlay that genuinely cannot own segment 8 must not simply be placed on
-the exception list. Its call/restore semantics must first be shown not to use the
+A future overlay that genuinely cannot own segment 8 must not simply be declared
+a guest. Its call/restore semantics must first be shown not to use the
 framed `CUR_WINA_ID` ownership model. Exceptions are architecture decisions, not
 space-allocation conveniences.
 
