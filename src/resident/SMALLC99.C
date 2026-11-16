@@ -47,21 +47,13 @@ char **argv;
     PORT_INIT();                 /* initialise target environment */
     if(ask(argc, argv) == NO)   /* get user options */
         return;
-    puts("OVT A: entering compinit\n");
     compinit();                 /* initialise compiler and TMS backend */
-    puts("OVT B: compinit complete\n");
     if(openfile() == NO)        /* open initial input and output */
         return;
-    puts("OVT C: files open\n");
     firstline();                /* fetch first source line */
-    puts("OVT D: first line read\n");
     header();                   /* emit native TMS module preamble */
-    puts("OVT E: header emitted\n");
-    puts("OVT H: MAPDIAG-BUILD-2\n");
     parse();                    /* process ALL input */
-    puts("OVT F: parse complete\n");
     trailer();                  /* close native TMS module */
-    puts("OVT G: trailer emitted\n");
     if(closefile() == NO)       /* explicitly close both files */
         return;
     finish();                   /* report compiler completion */
