@@ -95,8 +95,6 @@ extern R_CEXPR();
 extern R_EXPR();
 extern R_EXPRVAL();
 extern R_PREP();
-extern MACDIAG(); /* TEMP: resident macro-pointer diagnostic */
-extern puts();
 extern R_DEFINE();
 extern R_INCLUDE();
 extern R_DOASM();
@@ -274,14 +272,9 @@ needlval()
 */
 parse()
 {
-    /* TEMP: source-level trace limited to entry and #define handling.
-       No overlay mapping changes. */
-    puts("OVP0: parse entered\n");
     while(eof == 0) {
         if(amatch("extern", 6)) {
-            puts("OVD1: before R_DODECL(EXTERNAL)\n");
             R_DODECL(EXTERNAL);
-            puts("OVD2: after R_DODECL(EXTERNAL)\n");
         }
         else if(R_DODECL(STATIC))
             ;
@@ -290,21 +283,13 @@ parse()
         else if(match("#include"))
             R_INCLUDE();
         else if(match("#define")) {
-            puts("OVP1: before R_DEFINE\n");
-            MACDIAG();
             R_DEFINE();
-            MACDIAG();
-            puts("OVP2: after R_DEFINE\n");
         }
         else {
-            puts("OVD3: before R_DOFN\n");
             R_DOFN();
-            puts("OVD4: after R_DOFN\n");
         }
 
-        puts("OVB1: before end-of-loop blanks\n");
         blanks();
-        puts("OVB2: after end-of-loop blanks\n");
     }
 }
 
