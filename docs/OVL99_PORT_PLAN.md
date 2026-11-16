@@ -419,3 +419,39 @@ identified build remains unexplained. The layout change and/or
 fresh transfer might account for the difference; do not claim
 the defect is fixed until the clean build also passes. No merge to
 `main` before those gates.
+
+
+## Completed LANGUAGE regression: 133/133 on SBC (16 November 2026)
+
+Following the successful diagnostic-build compile of renamed
+`LANGTEST_LANGUAGE.C` as `CTEST.C`, the user assembled, linked and
+executed `CTEST` on the actual TMS99105 SBC. The program printed all
+language-test section headings and the complete expected result:
+
+```text
+tests: 133  passed: 133  failed: 0
+ALL LANGUAGE TESTS PASSED
+```
+
+**Observed PASS:** generated OVL99 dispatch compiler built and ran on the
+SBC, compiled the primary LANGUAGE test, produced a complete `CTEST.A99`,
+and the assembled/linked executable passed all 133 checks.
+
+**Important limit:** this pass used the diagnostic build, with the
+temporary `OVT` console markers and the `MAPDIAG` entry inserted into
+`dogoto()`. The original `>92E4` INT2 is not explained solely by the
+successful diagnostic run; additional instrumentation may change code
+layout and mask a problem, or a fresh executable transfer could have
+eliminated an earlier deployment mismatch.
+
+All temporary instrumentation has now been removed on the integration
+branch. `SMALLC99.C`, `CC_RESIDENT.C`, `CC_STMT_R.C` and
+`OVLMGR.A99` were verified byte-identical to their original `main`
+versions, with only the intentional generated-thunk / OVCALL build
+changes remaining elsewhere.
+
+**Next acceptance gate:** establish a clean Windows build, deploy that
+new `SMALLC99.EXE` onto the SBC, compile CTEST.C again, assemble/link/
+run CTEST, and require the same 133/133 result without any diagnostics.
+Then proceed to STRUCTTEST, PTRTEST, ARRTEST and error cases before
+considering merge. `main` remains unchanged.
