@@ -291,8 +291,8 @@ If you only want to compile on the SBC, copy its `bin/` folder and
 |---|---|
 | `smallcp.exe` (Small-C/Plus 1.06g) | Compiles SMALLC99's own C sources |
 | `r99.exe` | TMS9900 relocating assembler |
-| `link99.exe` **3.10.0 or later** | Linker; produces the paged EXE and, with `-Y`, the overlay table and thunks |
-| `drel.exe` | Object-file lint (relocation chains, page budgets) |
+| `link99.exe` **3.10.1 or later** | Linker; produces the paged EXE and, with `-Y`, the overlay table and thunks. Also checks every object's external-reference slots |
+| `drel.exe` | Object-file dump, for inspecting objects by hand. The build does not use it |
 
 ### Build
 
@@ -300,10 +300,10 @@ If you only want to compile on the SBC, copy its `bin/` folder and
 .\make_smallc99.ps1 *> build.log
 ```
 
-The script compiles and assembles everything, lints the objects with `drel`,
-links `SMALLC99.EXE` with `-YOVLMAP.TXT`, audits the overlay table and where
-every `R_*` call resolved from the linker's output, and deploys the compiler
-and the test programs to the monitor folder. `*>` captures every output stream,
+The script compiles and assembles everything, links `SMALLC99.EXE` with
+`-YOVLMAP.TXT`, audits the overlay table, the page budgets and where every
+`R_*` call resolved from the linker's output, and deploys the compiler and the
+test programs to the monitor folder. `*>` captures every output stream,
 including errors.
 
 ### Using it on the SBC
