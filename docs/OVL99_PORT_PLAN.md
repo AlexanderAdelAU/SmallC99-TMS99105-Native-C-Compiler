@@ -544,3 +544,43 @@ or bad BSS; if it starts sane but climbs unexpectedly, trace macro
 processing and PREP page restoration. Absence of both should direct
 attention to paths earlier than file-open or outside these probes.
 No production fix or merge is claimed.
+
+
+## Macro pointer checkpoints: zero; first parse dispatch trace (16 Nov 2026)
+
+The user retested the instrumented `SMALLC99 CTEST.C -V` and reported:
+
+```text
+SMALLC99: compiling CTEST.C -> CTEST.A99
+D1100000D1100000INT2 PC:0DC0 WP:0230 ST:2087 SEG:0000 PAGE:0000
+```
+
+The two `D110 0000` snapshots prove **resident `macptr=0`**
+after opening the files (before `firstline()`) and after emitting
+the header (before `parse()`). No `D701` appeared, and the
+`MACDIAG` call in the first-error reporter did not run. Thus neither
+a nonzero macro pointer at those checkpoints nor an invalid return
+*detected at OVCALL's return site* explains this crash. The return
+guard cannot exclude an invalid return or jump elsewhere in the
+runtime. `ccinit()` explicitly sets `macptr=0`, contrary to an
+earlier hypothesis that it was never initialized.
+
+A source-level diagnostic has been added to the resident `parse()`
+in `CC_RESIDENT.C`, logging:
+- `OVP0: parse entered` once at entry.
+- `OVP1: before R_DEFINE` and `D110 <macptr>` when the first
+  `#define` is recognized, before the generated OVL99 thunk runs.
+- `D110 <macptr>` and `OVP2: after R_DEFINE` on return.
+
+This stage trace is designed to distinguish a crash while performing
+`amatch/R_DODECL/match` lookahead from a crash in `R_DEFINE`/
+`dodefine` and its page-9 macro pools. It changes code layout
+and is diagnostic only. Windows cross-build
+[run 43787630710](https://github.com/AlexanderAdelAU/SmallC99-TMS99105-Native-C-Compiler/actions/runs/43787630710)
+passed. The generated thunk map and OVCALL runtime remain unchanged
+except for the earlier `D701` and `D110` guard code.
+
+**Next SBC observation:** fresh transfer of this integration-branch
+EXE, run CTEST, report which `OVP0`, `OVP1`, `OVP2`,
+`D110` and `D701` markers appear. Do not modify/merge
+production `main` until a clean build and hardware regression pass.
