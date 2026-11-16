@@ -584,3 +584,51 @@ except for the earlier `D701` and `D110` guard code.
 EXE, run CTEST, report which `OVP0`, `OVP1`, `OVP2`,
 `D110` and `D701` markers appear. Do not modify/merge
 production `main` until a clean build and hardware regression pass.
+
+
+## Five successful macro definitions, then first declaration: isolated trace (16 November 2026)
+
+The SBC output from `SMALLC99 CTEST.C -V` on the temporary `OVP`
+diagnostic build showed `OVP0: parse entered`, then **five complete**
+`OVP1 → R_DEFINE → OVP2` sequences. The resident macro pointer
+advanced:
+
+```text
+0000 -> 0003 -> 000C -> 000D -> 0010 -> 0013
+```
+
+This is consistent with the five **active** `#define` statements in
+`tests/LANGTEST_LANGUAGE.C`; two other definitions are skipped inside
+conditional branches. The next substantive source line after
+`#endif` is `extern int putchar();`. The interrupt occurred before
+another `OVP1`:
+
+```text
+INT2 PC:0FC2 WP:0230 ST:C487 SEG:0000 PAGE:0000
+```
+
+**Interpretation:** `R_DEFINE` and its PREP two-page mapping are
+successfully processing all active macro definitions. The first
+external declaration follows immediately, exercising the
+`R_DODECL(EXTERNAL)` tail-dispatch path rather than another
+`R_DEFINE`. This is a **testable hypothesis** for the new failure
+location, not proof of corrupted overlay execution or a failed
+declaration.
+
+Added narrowly scoped diagnostic messages in the resident
+`parse()`: `OVD1` immediately before `R_DODECL(EXTERNAL)`,
+`OVD2` after it returns, `OVD3` before `R_DOFN()` and `OVD4`
+after it returns. Existing `OVP`, `D110` and `D701`
+diagnostics remain active. No runtime mapping, LINK99 layout,
+module allocation or ABI change was made.
+
+The diagnostic update cross-built successfully in GitHub Actions
+[run 43791348016](https://github.com/AlexanderAdelAU/SmallC99-TMS99105-Native-C-Compiler/actions/runs/43791348016).
+
+**Next SBC test:** pull `ovl99-smallc99-integration`, rebuild,
+transfer `SMALLC99.EXE` and run `SMALLC99 CTEST.C -V`. Capture
+the last `OVD` or `OVP` marker and INT2 address. If `OVD1`
+appears but `OVD2` does not, inspect the declaration overlay
+and its callee/return path. If both appear, the failure occurs
+subsequently. Do not consider the earlier diagnosis of a “macro
+string queue full” to be substantiated by this trace.
