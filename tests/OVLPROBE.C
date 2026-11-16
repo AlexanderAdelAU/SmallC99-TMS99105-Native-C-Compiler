@@ -1,4 +1,5 @@
-/* OVLPROBE.C - Test 5: add int garr[10].\n   Keep SMALLC99.EXE unchanged while isolating CTEST failure. */
+/* OVLPROBE.C - Test 5: add int garr[10].
+   Keep SMALLC99.EXE unchanged while isolating CTEST failure. */
 
 #define TEN 10
 #define TWENTY (TEN * 2)
