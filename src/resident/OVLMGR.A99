@@ -81,9 +81,8 @@ WINA_SEG2:	EQU	16		;window A's FIRST segment * 2
 					;decide when CUR_WINA_ID is updated.
 OVLROW:		EQU	20		;bytes per OVL_TABLE row (5 pairs)
 
-;--- overlay class IDs and the generated table ---
-	INCL	"OVLADDR.INC"
-	INCL	"OVLTABLE.INC"
+;--- the table: built by LINK99 -Y from OVLMAP.TXT, in OVLGLUE ---
+	EXT	OVL_TABLE		;built by LINK99 -Y from OVLMAP.TXT
 
 ;--- PER-SEGMENT "currently loaded page" tracker, indexed segment*2 ---
 CURRENT_PAGE:

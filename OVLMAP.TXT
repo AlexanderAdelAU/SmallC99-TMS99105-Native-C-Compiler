@@ -1,20 +1,40 @@
-# SMALLC99 OVL99 transition manifest: source-module page overlay-name ID DREL-entries
-# For each module, DREL-entries are the ORIGINAL comma-separated entry:alias
-# descriptors, including "name:-" entries with no published DREL anchor.
-# The order, IDs and physical pages reproduce make_smallc99.ps1 M38e exactly.
-# A logical overlay can span several code modules and several segments.
-# No page assignment is yet automatic. CLI is an intentional owner exception.
-CC_DECL     2  DECL  3  dodeclare:D_DODECL
-CC_PREP     9  PREP  4  preprocess:P_PREP,dodefine:P_DEFINE,doinclude:P_INCLUDE,doasm:P_DOASM
-CC_MACS    10  PREP  4  putmac:-
-CC_STMT     3  STMT  2  statement:S_STMT
-CC_STMT_R  14  STMT  2  doexpr:-
-CC_EXPR_A   4  EXPR  1  expression:E_EXPR,constexpr:E_CEXPR
-CC_EXPR_B   5  EXPR  1  test:E_TEST
-CC_DFUN     6  DFUN  5  dofunction:D_DOFN
-CC_EXPR_C   7  EXPR  1  level1:-
-CC_EXPR_D   8  EXPR  1  primary:-
-CC_CG99    11  CGEN  6  ccout:P_CCOUT
-CC_CG99T   13  CGEN  6  setcodes:P_SETCODES
-CC_CL99    12  CLI   7  getoptions:P_GETOPTS,errrep:P_ERRREP
-CC_STRD    15  STRD  8  dostruct:T_STRUCT
+# SMALLC99 overlay map - read by LINK99 -Y (3.10.0 or later).
+#
+# LINK99 places each module on its page, builds OVL_TABLE and one
+# 12-byte resident thunk per public name, and checks the rules OVCALL
+# depends on.  Nothing else in the build declares an overlay.
+#
+#   module    base name of the .R99; its page comes from here (no -P)
+#   page      physical page.  The virtual segment is the module's AORG.
+#   overlay   modules with the same name are one overlay, mapped together.
+#             IDs follow first appearance: these lines are in ID order,
+#             so EXPR=1 STMT=2 DECL=3 PREP=4 DFUN=5 CGEN=6 CLI=7 STRD=8.
+#   entries   public=routine: a thunk called public reaches routine,
+#             which keeps its own name, so direct calls to it inside
+#             its overlay are untouched.  Several publics may share one
+#             routine (R_EXPR, R_EXPRVAL).
+#             :tail  the thunk maps the overlay and BRANCHES - no OVCALL
+#             frame.  Only the resident parse driver's two top-level
+#             dispatches (R_DODECL, R_DOFN) use it.
+#             "-" for a module that publishes nothing.
+#
+# module    page  overlay  entries
+CC_EXPR_A    4    EXPR     R_EXPR=expression R_EXPRVAL=expression R_CEXPR=constexpr
+CC_EXPR_B    5    EXPR     R_TEST=test
+CC_EXPR_C    7    EXPR     -
+CC_EXPR_D    8    EXPR     -
+CC_STMT      3    STMT     R_STMT=statement
+CC_STMT_R   14    STMT     -
+CC_DECL      2    DECL     R_DODECL=dodeclare:tail
+CC_PREP      9    PREP     R_PREP=preprocess R_DEFINE=dodefine R_INCLUDE=doinclude R_DOASM=doasm
+CC_MACS     10    PREP     -
+CC_DFUN      6    DFUN     R_DOFN=dofunction:tail
+CC_CG99     11    CGEN     R_CCOUT=ccout
+CC_CG99T    13    CGEN     R_SETCODES=setcodes
+CC_CL99     12    CLI      R_GETOPTS=getoptions R_ERROR=errrep
+CC_STRD     15    STRD     R_STRUCT=dostruct
+
+# CLI (CC_CL99, AORG >A000) maps segment A only and never owns the
+# window.  Safe because SMALLC99's OVCALL always takes a frame, so the
+# caller's whole row is mapped back when CLI returns.
+guest CLI
