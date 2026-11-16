@@ -15,52 +15,6 @@ function Require-File {
     }
 }
 
-function Get-OverlayRowWords {
-    param(
-        [Parameter(Mandatory=$true)][string[]]$TableLines,
-        [Parameter(Mandatory=$true)][int]$Id
-    )
-
-    # Parse ONE physical line at a time.  Do not use \s in a whole-file regex:
-    # in .NET \s includes CR/LF and can cause pathological cross-line backtracking.
-    $pattern = '^[ \t]*WORD[ \t]+([0-9, \t]+)[ \t]*;[^\r\n]*\bID[ \t]+' + $Id + '\b[^\r\n]*$'
-    $rowMatch = $null
-    foreach ($line in $TableLines) {
-        $candidate = [regex]::Match($line, $pattern, [Text.RegularExpressions.RegexOptions]::IgnoreCase)
-        if ($candidate.Success) {
-            $rowMatch = $candidate
-            break
-        }
-    }
-    if ($null -eq $rowMatch) {
-        throw "*** BUILD FAILED: no OVLTABLE.INC row found for overlay ID $Id"
-    }
-
-    $words = @()
-    foreach ($item in ($rowMatch.Groups[1].Value -split ',')) {
-        $trimmed = $item.Trim()
-        if ($trimmed -ne '') { $words += [int]$trimmed }
-    }
-    if ($words.Count -ne 10) {
-        throw "*** BUILD FAILED: overlay ID $Id row does not contain exactly 10 words"
-    }
-    return $words
-}
-
-function Get-OverlayAnchor {
-    param(
-        [Parameter(Mandatory=$true)][string]$AddrText,
-        [Parameter(Mandatory=$true)][string]$Symbol
-    )
-
-    $pattern = '(?im)^\s*' + [regex]::Escape($Symbol) + '\s+EQU\s+0*([0-9A-F]+)H\b'
-    $match = [regex]::Match($AddrText, $pattern)
-    if (-not $match.Success) {
-        throw "*** BUILD FAILED: OVLADDR.INC does not contain a hexadecimal EQU for $Symbol"
-    }
-    return [Convert]::ToInt32($match.Groups[1].Value, 16)
-}
-
 function Compile-C {
     param([Parameter(Mandatory=$true)][string]$Name)
     Write-Output "`n================================================"
@@ -113,7 +67,7 @@ function Assemble-R99 {
     }
 }
 
-$LINK99_VER = "3.9.59"   # 3.9.59: XPOFF marker fix (3.9.58 mis-relocated some overlay words); 3.9.58: >64K code, XRPLUS, cdisk, ifilelbuf
+$LINK99_VER = "3.10.0"   # 3.10.0: -Y overlay map (table + thunks built by the linker); 3.9.59: XPOFF marker fix
 $DREL_VER   = "Version 4.0"
 $MONITOR_DIR = "C:\Development-W11DEV\Eclipse Workspace\TMS99105_SBC\MONITOR"
 $TOOLCHAIN_DIR = Join-Path $PSScriptRoot "toolchain"
@@ -141,25 +95,28 @@ $LIB_INPUTS = @($RUNTIME_OBJECTS) + @($RUNTIME_LIBRARIES) + @($RUNTIME_INDEXES)
 # This deliberately copies matching .NDX files alongside .LIB files.
 $LIB_COPY_PATTERNS = @("*.R99", "*.LIB", "*.NDX")
 
-# The OVL99 overlay map: the physical layout of all 14 overlay modules,
-# their 8 overlay IDs and their DREL descriptors. Cross-overlay calls go
-# through OVCALL.A99 and the thunks generated from OVLTHUNKS.TXT below.
+# The OVL99 overlay map.  LINK99 reads it itself (-Y): it places each
+# module on its page, builds OVL_TABLE and the resident R_* thunks, and
+# checks the window-owner rule (CLI is declared there as a guest).  The
+# build only needs the module names, to assemble and lint them, and the
+# public names, to audit the bindings after the link.
 $OVLMAP_FILE = Join-Path $PSScriptRoot "OVLMAP.TXT"
-$OVLMAP_READER = Join-Path $PSScriptRoot "tools\ovlmanifest.ps1"
-$OVLDEFS_FILE = Join-Path $PSScriptRoot "include\OVLDEFS.INC"
-foreach ($requiredMapFile in @($OVLMAP_FILE, $OVLMAP_READER, $OVLDEFS_FILE)) {
-    Require-File $requiredMapFile
+Require-File $OVLMAP_FILE
+$OVERLAYS = @()
+$PUBLIC_NAMES = @()
+foreach ($raw in (Get-Content -LiteralPath $OVLMAP_FILE)) {
+    $line = ($raw -replace '#.*$', '').Trim()
+    if ($line -eq '') { continue }
+    $f = @($line -split '[ \t]+')
+    if (@('window','guest') -contains $f[0].ToLowerInvariant()) { continue }
+    if ($f.Count -lt 4) { throw "*** BUILD FAILED: OVLMAP.TXT: want 'module page overlay entries': $raw" }
+    $OVERLAYS += [pscustomobject]@{ Name = $f[0]; Page = [int]$f[1]; Overlay = $f[2] }
+    foreach ($e in $f[3..($f.Count-1)]) {
+        if ($e -ne '-') { $PUBLIC_NAMES += (($e -split '[=:]')[0]) }
+    }
 }
-$OVERLAYS = @(& $OVLMAP_READER -Map $OVLMAP_FILE -Defs $OVLDEFS_FILE)
-if ($OVERLAYS.Count -eq 0) { throw "*** BUILD FAILED: no OVL99 manifest entries" }
-Write-Output ("OVL99 manifest: " + $OVERLAYS.Count + " physical modules.")
-
-# Overlay ownership contract.  Framed overlay dispatch saves/restores only
-# CUR_WINA_ID, and CUR_WINA_ID is defined by the overlay mapped into virtual
-# segment 8.  Therefore every normal/nestable overlay must begin with segment 8.
-# OVL_CLI (ID 7) is a top-level one-shot parser and is the only current exception.
-# New exceptions must be explicit here; all future IDs are checked automatically.
-$OVERLAY_OWNER_EXCEPTIONS = @(7)
+if ($OVERLAYS.Count -eq 0) { throw "*** BUILD FAILED: OVLMAP.TXT declares no modules" }
+Write-Output ("OVL99 map: " + $OVERLAYS.Count + " physical modules, " + $PUBLIC_NAMES.Count + " public names.")
 
 $required = @(
     "src\resident\SMALLC99.C",
@@ -174,12 +131,9 @@ $required = @(
     "src\resident\CC_PORT.A99",
     "src\resident\OVCALL.A99",
     "src\resident\OVLMGR.A99",
-    "tools\ovlthunks.ps1",
-    "OVLTHUNKS.TXT",
     "src\resident\SPYOUT.A99",
     "src\resident\CC_STRU.A99",
-    "src\overlays\CC_STRD.C",
-    "include\OVLDEFS.INC"
+    "src\overlays\CC_STRD.C"
 )
 foreach ($path in $required) { Require-File $path }
 
@@ -234,7 +188,7 @@ Copy-Item -LiteralPath "src\fixtures\M38B.C" -Destination "build_tms\M38B.C" -Fo
 Copy-Item -LiteralPath "src\fixtures\TEST.C" -Destination "build_tms\TEST.C" -Force
 Copy-Item -LiteralPath "src\fixtures\M38D.C" -Destination "build_tms\M38D.C" -Force
 Copy-Item -LiteralPath "src\harness\M38DPROBE.A99" -Destination "build_tms\M38DPROBE.A99" -Force
-Copy-Item -LiteralPath "include\OVLDEFS.INC" -Destination "build_tms\OVLDEFS.INC" -Force
+Copy-Item -LiteralPath $OVLMAP_FILE -Destination "build_tms\OVLMAP.TXT" -Force
 # Copy binary runtime/library artifacts only.  No IOLIB99 source is used.
 # Libraries and their .NDX files are kept together in build_tms.
 foreach ($pattern in $LIB_COPY_PATTERNS) {
@@ -249,7 +203,7 @@ foreach ($tool in $HOST_TOOLS) {
 Set-Location -LiteralPath "build_tms"
 
 foreach ($tool in @("smallcp.exe","r99.exe","drel.exe","link99.exe")) { Require-File ".\$tool" }
-foreach ($input in @("SMALLC99.C","CC_CD99.C","CC_CG99.C","CC_CG99T.C","CC_CL99.C","M38B.C","TEST.C","M38D.C","M38DPROBE.A99","OVLDEFS.INC")) { Require-File ".\$input" }
+foreach ($input in @("SMALLC99.C","CC_CD99.C","CC_CG99.C","CC_CG99T.C","CC_CL99.C","M38B.C","TEST.C","M38D.C","M38DPROBE.A99","OVLMAP.TXT")) { Require-File ".\$input" }
 foreach ($name in $LIB_INPUTS) { Require-File ".\$name" }
 
 $linkAscii = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes((Resolve-Path ".\link99.exe")))
@@ -548,130 +502,11 @@ if ($overlayLint -match '(?im)XREFS\s+group:\s+_ccswitc\b') {
 }
 Write-Output "Bootstrap audit: compiler overlays have no _ccswitc XREFs."
 
-$drelArgs = @()
-foreach ($overlay in $OVERLAYS) { $drelArgs += $overlay.Descriptor }
-$includeOutput = & .\drel.exe -i OVLADDR.INC @drelArgs 2>&1 | Out-String
-$includeExit = $LASTEXITCODE
-Write-Output "`n================================================"
-Write-Output "Generating TMS overlay include files"
-Write-Output "================================================"
-Write-Output $includeOutput
-if ($includeExit -ne 0) { throw "*** BUILD FAILED: DREL include generation" }
-Require-File ".\OVLADDR.INC"
-Require-File ".\OVLTABLE.INC"
-$addrText = Get-Content -LiteralPath ".\OVLADDR.INC" -Raw
-foreach ($anchor in @("P_CCOUT","P_SETCODES","P_GETOPTS")) {
-    if ($addrText -notmatch ("\b" + $anchor + "\b")) {
-        throw "*** BUILD FAILED: OVLADDR.INC does not contain $anchor"
-    }
-}
-$tableText = Get-Content -LiteralPath ".\OVLTABLE.INC" -Raw
-
-# DREL 4.0 currently emits only the first page for OVL_STMT when the
-# second physical page is 14, even though LINK99 accepts -P14 and the
-# target mapper supports pages 0..15.  CC_STMT_R is AORG >9000 and is
-# linked on physical page 14, so make the generated runtime table match
-# the actual link layout.  If DREL is later fixed and emits both pages,
-# this block leaves the row unchanged.
-if ($tableText -notmatch 'WORD\s+8,3,9,14,0,0,0,0,0,0\s*;ID 2') {
-    $oldStmtRow = '(?im)^\s*WORD\s+8,3,0,0,0,0,0,0,0,0\s*;ID 2[^\r\n]*$'
-    if ($tableText -notmatch $oldStmtRow) {
-        throw "*** BUILD FAILED: unexpected DREL OVL_STMT ID 2 row"
-    }
-    $tableText = [regex]::Replace(
-        $tableText,
-        $oldStmtRow,
-        "`tWORD`t8,3,9,14,0,0,0,0,0,0`t;ID 2 (2 pages)",
-        [Text.RegularExpressions.RegexOptions]::IgnoreCase -bor [Text.RegularExpressions.RegexOptions]::Multiline
-    )
-    [IO.File]::WriteAllText((Resolve-Path ".\OVLTABLE.INC"), $tableText, [Text.Encoding]::ASCII)
-}
-
-$tableText = Get-Content -LiteralPath ".\OVLTABLE.INC" -Raw
-$stmtRow = [regex]::Match($tableText, '(?im)^\s*WORD\s+8,3[^\r\n]*;ID 2[^\r\n]*$').Value
-Write-Output ("OVL_STMT final row: " + $stmtRow)
-if ($tableText -notmatch 'WORD\s+8,3,9,14,0,0,0,0,0,0\s*;ID 2') {
-    throw "*** BUILD FAILED: OVL_STMT ID 2 is not mapped as >8000/page3 + >9000/page14"
-}
-
-# HARD INVARIANT: every normal/nestable overlay must own segment 8.
-# Parse OVLTABLE line-by-line.  This is intentionally simple and bounded:
-# no whole-file regex, no multiline whitespace, no backtracking across rows.
-$tableLines = Get-Content -LiteralPath ".\OVLTABLE.INC"
-$overlayIds = @()
-foreach ($line in $tableLines) {
-    $idMatch = [regex]::Match(
-        $line,
-        '^[ \t]*WORD[ \t]+[0-9, \t]+[ \t]*;[^\r\n]*\bID[ \t]+(\d+)\b',
-        [Text.RegularExpressions.RegexOptions]::IgnoreCase
-    )
-    if ($idMatch.Success) {
-        $overlayIds += [int]$idMatch.Groups[1].Value
-    }
-}
-if ($overlayIds.Count -eq 0) {
-    throw "*** BUILD FAILED: no overlay rows found in OVLTABLE.INC"
-}
-foreach ($id in $overlayIds) {
-    if ($id -eq 0 -or $OVERLAY_OWNER_EXCEPTIONS -contains $id) { continue }
-
-    $words = Get-OverlayRowWords -TableLines $tableLines -Id $id
-    if ($words[0] -ne 8) {
-        throw "*** BUILD FAILED: overlay ID $id violates window-owner invariant: first mapped segment is $($words[0]), expected 8"
-    }
-
-    $segment8Count = 0
-    foreach ($index in @(0,2,4,6,8)) {
-        if ($words[$index] -eq 8) { $segment8Count++ }
-    }
-    if ($segment8Count -ne 1) {
-        throw "*** BUILD FAILED: overlay ID $id must map segment 8 exactly once"
-    }
-}
-Write-Output "Overlay ownership audit: every non-exempt overlay begins at segment 8 and owns it exactly once."
-
-# CGEN is the regression that established this invariant.  Keep both its
-# physical pages and its virtual owner slots exact.
-$cgenWords = Get-OverlayRowWords -TableLines $tableLines -Id 6
-$expectedCgen = @(8,11,9,13,0,0,0,0,0,0)
-for ($i = 0; $i -lt 10; $i++) {
-    if ($cgenWords[$i] -ne $expectedCgen[$i]) {
-        throw "*** BUILD FAILED: OVL_CGEN ID 6 must be exactly 8,11,9,13,0,0,0,0,0,0"
-    }
-}
-
-# The exported CGEN entry points must agree with the table: ccout in segment 8,
-# templates/setcodes in segment 9.  This catches an AORG regression even if a
-# hand-edited/generated table happens to look correct.
-$ccoutAddr = Get-OverlayAnchor -AddrText $addrText -Symbol "P_CCOUT"
-$setcodesAddr = Get-OverlayAnchor -AddrText $addrText -Symbol "P_SETCODES"
-if ($ccoutAddr -lt 0x8000 -or $ccoutAddr -gt 0x8FFF) {
-    throw ("*** BUILD FAILED: P_CCOUT is >{0:X4}; expected >8000..>8FFF" -f $ccoutAddr)
-}
-if ($setcodesAddr -lt 0x9000 -or $setcodesAddr -gt 0x9FFF) {
-    throw ("*** BUILD FAILED: P_SETCODES is >{0:X4}; expected >9000..>9FFF" -f $setcodesAddr)
-}
-Write-Output ("CGEN ownership audit: ID 6 = 8,11,9,13; P_CCOUT=>{0:X4}; P_SETCODES=>{1:X4}." -f $ccoutAddr,$setcodesAddr)
-
-if ($tableText -notmatch 'WORD\s+10,12,0,0,0,0,0,0,0,0\s*;ID 7') {
-    throw "*** BUILD FAILED: overlay ID 7 is not mapped to page 12"
-}
-
-# Generate the shared-gate entry thunks using the ACTUAL, repaired DREL
-# table. CLI and multi-page call targets are checked before assembly.
-$ThunkGenerator = Join-Path $PSScriptRoot "tools\ovlthunks.ps1"
-$thunkLog = & $ThunkGenerator -Map (Join-Path $PSScriptRoot "OVLMAP.TXT") `
-    -Calls (Join-Path $PSScriptRoot "OVLTHUNKS.TXT") `
-    -Defs ".\OVLDEFS.INC" -Addresses ".\OVLADDR.INC" `
-    -Table ".\OVLTABLE.INC" -Output ".\OVLTHUNK.A99" 2>&1 | Out-String
-Write-Output $thunkLog
-Require-File ".\OVLTHUNK.A99"
-
-foreach ($name in @("SMALLC99","CC_PORT","OVCALL","OVLTHUNK","CC_CD99","CC_RESIDENT","CC_SCAN_SYM","CC_DATA","OVLMGR","SPYOUT","CC_STRU")) {
+foreach ($name in @("SMALLC99","CC_PORT","OVCALL","CC_CD99","CC_RESIDENT","CC_SCAN_SYM","CC_DATA","OVLMGR","SPYOUT","CC_STRU")) {
     Assemble-R99 $name
 }
 
-$residentFiles = @("SMALLC99.R99","CC_PORT.R99","OVCALL.R99","OVLTHUNK.R99","CC_CD99.R99","CC_RESIDENT.R99","CC_SCAN_SYM.R99","CC_DATA.R99","CC_STRU.R99")
+$residentFiles = @("SMALLC99.R99","CC_PORT.R99","OVCALL.R99","CC_CD99.R99","CC_RESIDENT.R99","CC_SCAN_SYM.R99","CC_DATA.R99","CC_STRU.R99")
 $residentLint = & .\drel.exe -c @residentFiles 2>&1 | Out-String
 $residentLintExit = $LASTEXITCODE
 Write-Output "`n================================================"
@@ -697,15 +532,15 @@ foreach ($overlay in $OVERLAYS) {
     }
 }
 
+# No -P: every overlay's page comes from the map.
 $pageArgs = @()
 foreach ($overlay in $OVERLAYS) {
-    $pageArgs += "-P$($overlay.Page)"
     $pageArgs += "$($overlay.Name).R99"
 }
 
 $linkArgs = @(
-    "-O1000", "-M", "-S", "SMALLC99.EXE",
-    "SMALLC99.R99", "CC_PORT.R99", "OVCALL.R99", "OVLMGR.R99", "OVLTHUNK.R99",
+    "-O1000", "-M", "-S", "-YOVLMAP.TXT", "SMALLC99.EXE",
+    "SMALLC99.R99", "CC_PORT.R99", "OVCALL.R99", "OVLMGR.R99",
     "CC_RESIDENT.R99", "CC_SCAN_SYM.R99", "CC_CD99.R99", "CC_DATA.R99"
 )
 $linkArgs += $RUNTIME_OBJECTS
@@ -731,20 +566,49 @@ if ($linkOutput -match '(?im)^\s*-\s*Unresolved:' -or
 if ($linkOutput -notmatch ("Version\s+" + [regex]::Escape($LINK99_VER) + "\b")) {
     throw "*** BUILD FAILED: wrong LINK99 version"
 }
-foreach ($overlay in $OVERLAYS) {
-    if ($linkOutput -notmatch ("Page mode: curpage=\s*" + $overlay.Page + "\s")) {
-        throw "*** BUILD FAILED: LINK99 did not report page $($overlay.Page) for $($overlay.Name)"
+# The table LINK99 built.  These are the layouts the compiler depends
+# on, checked against what was actually linked rather than against an
+# include file:
+#   STMT  >8000 page 3 + >9000 page 14 (swstab lives in CC_STMT_R)
+#   CGEN  >8000 page 11 (ccout, code[]) + >9000 page 13 (setcodes)
+#   CLI   >A000 page 12 only (a guest: never the window owner)
+$mapRows = @{}
+$inMap = $false
+foreach ($line in ($linkOutput -split '\r?\n')) {
+    if ($line -match '^OVL99 overlay map') { $inMap = $true; continue }
+    if (-not $inMap) { continue }
+    if ($line.Trim() -eq '') { break }
+    $m = [regex]::Match($line, '^\s*ID\s*(\d+)\s+(\S+)\s+seg/page((?:\s+[0-9A-F]/\d+)+)')
+    if ($m.Success) { $mapRows[$m.Groups[2].Value] = $m.Groups[3].Value.Trim() -replace '\s+', ' ' }
+    Write-Output ("  " + $line.Trim())
+}
+$expectRows = [ordered]@{ STMT = "8/3 9/14"; CGEN = "8/11 9/13"; CLI = "A/12" }
+foreach ($ovl in $expectRows.Keys) {
+    if (-not $mapRows.ContainsKey($ovl)) { throw "*** BUILD FAILED: LINK99 built no table row for $ovl" }
+    if ($mapRows[$ovl] -ne $expectRows[$ovl]) {
+        throw ("*** BUILD FAILED: {0} maps {1}, expected {2}" -f $ovl, $mapRows[$ovl], $expectRows[$ovl])
     }
 }
+Write-Output "OVL99 table audit: STMT 8/3 9/14, CGEN 8/11 9/13, CLI A/12 (guest)."
+
+# The CGEN routines must sit in the segments the table maps: ccout in
+# >8000-8FFF, setcodes in >9000-9FFF.  The thunks reach them as ~ccout and
+# ~setcodes, LINK99's names for the overlay's own copies.  Catches an AORG regression even
+# when the row itself looks right.
+foreach ($chk in @(@("ccout",0x8000), @("setcodes",0x9000))) {
+    $m = [regex]::Match($linkOutput, '(?im)xref[ \t]+~' + $chk[0] + '[ \t]+@[ \t]*[0-9A-F]+[ \t]*=[ \t]*([0-9A-F]+)')
+    if (-not $m.Success) { throw "*** BUILD FAILED: no LINK99 binding for $($chk[0])" }
+    $addr = [Convert]::ToInt32($m.Groups[1].Value, 16)
+    if ($addr -lt $chk[1] -or $addr -gt ($chk[1] + 0x0FFF)) {
+        throw ("*** BUILD FAILED: {0} is at >{1:X4}, expected >{2:X4}-{3:X4}" -f $chk[0], $addr, $chk[1], ($chk[1] + 0x0FFF))
+    }
+    Write-Output ("CGEN audit: {0} at >{1:X4}" -f $chk[0], $addr)
+}
+
 # Validate LINK99's ACTUAL external resolutions: all referenced R_* call
 # symbols must reach resident thunks, never virtual overlay text addresses.
 $dispatchNames = @{}
-foreach ($raw in (Get-Content -LiteralPath (Join-Path $PSScriptRoot "OVLTHUNKS.TXT"))) {
-    $line = $raw.Trim()
-    if ($line.Length -eq 0 -or $line.StartsWith("#")) { continue }
-    $fields = @($line -split '[ \t]+' | Where-Object { $_ -ne '' })
-    $dispatchNames[$fields[0].ToUpperInvariant()] = $true
-}
+foreach ($p in $PUBLIC_NAMES) { $dispatchNames[$p.ToUpperInvariant()] = $true }
 $seenLinkDispatch = @{}
 foreach ($line in ($linkOutput -split '\r?\n')) {
     $m = [regex]::Match($line, 'xref[ \t]+(R_[A-Za-z0-9_]+)[ \t]+@[ \t]*[0-9A-F]+[ \t]*=[ \t]*([0-9A-F]+)', [Text.RegularExpressions.RegexOptions]::IgnoreCase)
