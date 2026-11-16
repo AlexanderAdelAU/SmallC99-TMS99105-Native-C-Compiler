@@ -159,11 +159,8 @@ docont()
 ** declarations; nogo (set by statement() from declared) rejects
 ** goto after block-locals have made stack restoration ambiguous.
 */
-extern MAPDIAG();
-
 dogoto()
 {
-    MAPDIAG(); /* TEMP: map owner, seg9 physical page, SP before dogoto */
     if(nogo > 0)
         error("not allowed with block-locals");
     else
