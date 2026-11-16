@@ -1,0 +1,20 @@
+# SMALLC99 OVL99 transition manifest: source-module page overlay-name ID DREL-entries
+# For each module, DREL-entries are the ORIGINAL comma-separated entry:alias
+# descriptors, including "name:-" entries with no published DREL anchor.
+# The order, IDs and physical pages reproduce make_smallc99.ps1 M38e exactly.
+# A logical overlay can span several code modules and several segments.
+# No page assignment is yet automatic. CLI is an intentional owner exception.
+CC_DECL     2  DECL  3  dodeclare:D_DODECL
+CC_PREP     9  PREP  4  preprocess:P_PREP,dodefine:P_DEFINE,doinclude:P_INCLUDE,doasm:P_DOASM
+CC_MACS    10  PREP  4  putmac:-
+CC_STMT     3  STMT  2  statement:S_STMT
+CC_STMT_R  14  STMT  2  doexpr:-
+CC_EXPR_A   4  EXPR  1  expression:E_EXPR,constexpr:E_CEXPR
+CC_EXPR_B   5  EXPR  1  test:E_TEST
+CC_DFUN     6  DFUN  5  dofunction:D_DOFN
+CC_EXPR_C   7  EXPR  1  level1:-
+CC_EXPR_D   8  EXPR  1  primary:-
+CC_CG99    11  CGEN  6  ccout:P_CCOUT
+CC_CG99T   13  CGEN  6  setcodes:P_SETCODES
+CC_CL99    12  CLI   7  getoptions:P_GETOPTS,errrep:P_ERRREP
+CC_STRD    15  STRD  8  dostruct:T_STRUCT

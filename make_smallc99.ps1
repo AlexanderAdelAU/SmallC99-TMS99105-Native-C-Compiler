@@ -100,7 +100,9 @@ function Assemble-R99 {
     Write-Output "`n================================================"
     Write-Output "Assembling $Name"
     Write-Output "================================================"
-    $output = & .\r99.exe $Name SCHC 2>&1 | Out-String
+    $drive = ([IO.Path]::GetPathRoot((Get-Location).Path)).Substring(0,1).ToUpperInvariant()
+    $r99Flags = "S${drive}H${drive}"
+    $output = & .\r99.exe $Name $r99Flags 2>&1 | Out-String
     $exitCode = $LASTEXITCODE
     Write-Output $output
     if ($output -notmatch "No error\(s\)") {
@@ -139,22 +141,18 @@ $LIB_INPUTS = @($RUNTIME_OBJECTS) + @($RUNTIME_LIBRARIES) + @($RUNTIME_INDEXES)
 # This deliberately copies matching .NDX files alongside .LIB files.
 $LIB_COPY_PATTERNS = @("*.R99", "*.LIB", "*.NDX")
 
-$OVERLAYS = @(
-    @{ Name="CC_DECL";   Page=2;  Descriptor="CC_DECL.R99=2,3,dodeclare:D_DODECL" }
-    @{ Name="CC_PREP";   Page=9;  Descriptor="CC_PREP.R99=9,4,preprocess:P_PREP,dodefine:P_DEFINE,doinclude:P_INCLUDE,doasm:P_DOASM" }
-    @{ Name="CC_MACS";   Page=10; Descriptor="CC_MACS.R99=10,4,putmac:-" }
-    @{ Name="CC_STMT";   Page=3;  Descriptor="CC_STMT.R99=3,2,statement:S_STMT" }
-    @{ Name="CC_STMT_R"; Page=14; Descriptor="CC_STMT_R.R99=14,2,doexpr:-" }
-    @{ Name="CC_EXPR_A"; Page=4;  Descriptor="CC_EXPR_A.R99=4,1,expression:E_EXPR,constexpr:E_CEXPR" }
-    @{ Name="CC_EXPR_B"; Page=5;  Descriptor="CC_EXPR_B.R99=5,1,test:E_TEST" }
-    @{ Name="CC_DFUN";   Page=6;  Descriptor="CC_DFUN.R99=6,5,dofunction:D_DOFN" }
-    @{ Name="CC_EXPR_C"; Page=7;  Descriptor="CC_EXPR_C.R99=7,1,level1:-" }
-    @{ Name="CC_EXPR_D"; Page=8;  Descriptor="CC_EXPR_D.R99=8,1,primary:-" }
-    @{ Name="CC_CG99";   Page=11; Descriptor="CC_CG99.R99=11,6,ccout:P_CCOUT" }
-    @{ Name="CC_CG99T";  Page=13; Descriptor="CC_CG99T.R99=13,6,setcodes:P_SETCODES" }
-    @{ Name="CC_CL99";   Page=12; Descriptor="CC_CL99.R99=12,7,getoptions:P_GETOPTS,errrep:P_ERRREP" }
-    @{ Name="CC_STRD";   Page=15; Descriptor="CC_STRD.R99=15,8,dostruct:T_STRUCT" }   # structs phase 1: struct/union declarations
-)
+# Phase 1 of the OVL99 port: declare the existing physical layout in a
+# separate map, preserving the current 8 overlay IDs and all 14 DREL
+# descriptors byte-for-byte. Legacy OVLSTUBS.A99 remains in use for now.
+$OVLMAP_FILE = Join-Path $PSScriptRoot "OVLMAP.TXT"
+$OVLMAP_READER = Join-Path $PSScriptRoot "tools\ovlmanifest.ps1"
+$OVLDEFS_FILE = Join-Path $PSScriptRoot "include\OVLDEFS.INC"
+foreach ($requiredMapFile in @($OVLMAP_FILE, $OVLMAP_READER, $OVLDEFS_FILE)) {
+    Require-File $requiredMapFile
+}
+$OVERLAYS = @(& $OVLMAP_READER -Map $OVLMAP_FILE -Defs $OVLDEFS_FILE)
+if ($OVERLAYS.Count -eq 0) { throw "*** BUILD FAILED: no OVL99 manifest entries" }
+Write-Output ("OVL99 phase-1 manifest: " + $OVERLAYS.Count + " physical modules; existing OVLSTUBS unchanged.")
 
 # Overlay ownership contract.  Framed overlay dispatch saves/restores only
 # CUR_WINA_ID, and CUR_WINA_ID is defined by the overlay mapped into virtual
@@ -174,9 +172,10 @@ $required = @(
     "src\fixtures\M38D.C",
     "src\harness\M38DPROBE.A99",
     "src\resident\CC_PORT.A99",
-    "src\resident\CLISTUB.A99",
+    "src\resident\OVCALL.A99",
     "src\resident\OVLMGR.A99",
-    "src\resident\OVLSTUBS.A99",
+    "tools\ovlthunks.ps1",
+    "OVLTHUNKS.TXT",
     "src\resident\SPYOUT.A99",
     "src\resident\CC_STRU.A99",
     "src\overlays\CC_STRD.C",
@@ -221,7 +220,7 @@ foreach ($name in $commonOverlays) {
     Copy-Item -LiteralPath (Join-Path "src\overlays" $name) -Destination (Join-Path "build_tms" $name) -Force
 }
 
-$residentAsm = @("CC_PORT.A99", "CLISTUB.A99", "OVLMGR.A99", "OVLSTUBS.A99", "SPYOUT.A99", "CC_STRU.A99")
+$residentAsm = @("CC_PORT.A99", "OVCALL.A99", "OVLMGR.A99", "SPYOUT.A99", "CC_STRU.A99")
 foreach ($name in $residentAsm) {
     Copy-Item -LiteralPath (Join-Path "src\resident" $name) -Destination (Join-Path "build_tms" $name) -Force
 }
@@ -658,11 +657,21 @@ if ($tableText -notmatch 'WORD\s+10,12,0,0,0,0,0,0,0,0\s*;ID 7') {
     throw "*** BUILD FAILED: overlay ID 7 is not mapped to page 12"
 }
 
-foreach ($name in @("SMALLC99","CC_PORT","CLISTUB","CC_CD99","CC_RESIDENT","CC_SCAN_SYM","CC_DATA","OVLMGR","OVLSTUBS","SPYOUT","CC_STRU")) {
+# Generate the shared-gate entry thunks using the ACTUAL, repaired DREL
+# table. CLI and multi-page call targets are checked before assembly.
+$ThunkGenerator = Join-Path $PSScriptRoot "tools\ovlthunks.ps1"
+$thunkLog = & $ThunkGenerator -Map (Join-Path $PSScriptRoot "OVLMAP.TXT") `
+    -Calls (Join-Path $PSScriptRoot "OVLTHUNKS.TXT") `
+    -Defs ".\OVLDEFS.INC" -Addresses ".\OVLADDR.INC" `
+    -Table ".\OVLTABLE.INC" -Output ".\OVLTHUNK.A99" 2>&1 | Out-String
+Write-Output $thunkLog
+Require-File ".\OVLTHUNK.A99"
+
+foreach ($name in @("SMALLC99","CC_PORT","OVCALL","OVLTHUNK","CC_CD99","CC_RESIDENT","CC_SCAN_SYM","CC_DATA","OVLMGR","SPYOUT","CC_STRU")) {
     Assemble-R99 $name
 }
 
-$residentFiles = @("SMALLC99.R99","CC_PORT.R99","CLISTUB.R99","CC_CD99.R99","CC_RESIDENT.R99","CC_SCAN_SYM.R99","CC_DATA.R99","CC_STRU.R99")
+$residentFiles = @("SMALLC99.R99","CC_PORT.R99","OVCALL.R99","OVLTHUNK.R99","CC_CD99.R99","CC_RESIDENT.R99","CC_SCAN_SYM.R99","CC_DATA.R99","CC_STRU.R99")
 $residentLint = & .\drel.exe -c @residentFiles 2>&1 | Out-String
 $residentLintExit = $LASTEXITCODE
 Write-Output "`n================================================"
@@ -696,7 +705,7 @@ foreach ($overlay in $OVERLAYS) {
 
 $linkArgs = @(
     "-O1000", "-M", "-S", "SMALLC99.EXE",
-    "SMALLC99.R99", "CC_PORT.R99", "CLISTUB.R99", "OVLMGR.R99", "OVLSTUBS.R99",
+    "SMALLC99.R99", "CC_PORT.R99", "OVCALL.R99", "OVLMGR.R99", "OVLTHUNK.R99",
     "CC_RESIDENT.R99", "CC_SCAN_SYM.R99", "CC_CD99.R99", "CC_DATA.R99"
 )
 $linkArgs += $RUNTIME_OBJECTS
@@ -727,6 +736,37 @@ foreach ($overlay in $OVERLAYS) {
         throw "*** BUILD FAILED: LINK99 did not report page $($overlay.Page) for $($overlay.Name)"
     }
 }
+# Validate LINK99's ACTUAL external resolutions: all referenced R_* call
+# symbols must reach resident thunks, never virtual overlay text addresses.
+$dispatchNames = @{}
+foreach ($raw in (Get-Content -LiteralPath (Join-Path $PSScriptRoot "OVLTHUNKS.TXT"))) {
+    $line = $raw.Trim()
+    if ($line.Length -eq 0 -or $line.StartsWith("#")) { continue }
+    $fields = @($line -split '[ \t]+' | Where-Object { $_ -ne '' })
+    $dispatchNames[$fields[0].ToUpperInvariant()] = $true
+}
+$seenLinkDispatch = @{}
+foreach ($line in ($linkOutput -split '\r?\n')) {
+    $m = [regex]::Match($line, 'xref[ \t]+(R_[A-Za-z0-9_]+)[ \t]+@[ \t]*[0-9A-F]+[ \t]*=[ \t]*([0-9A-F]+)', [Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    if (-not $m.Success) { continue }
+    $name = $m.Groups[1].Value.ToUpperInvariant()
+    if (-not $dispatchNames.ContainsKey($name)) { continue }
+    $bound = [Convert]::ToInt32($m.Groups[2].Value,16)
+    if ($bound -lt 0x1000 -or $bound -ge 0x8000) {
+        throw ("*** BUILD FAILED: {0} resolved at >{1:X4}, outside resident memory" -f $name,$bound)
+    }
+    if ($seenLinkDispatch.ContainsKey($name) -and $seenLinkDispatch[$name] -ne $bound) {
+        throw "*** BUILD FAILED: inconsistent LINK99 resolutions for $name"
+    }
+    $seenLinkDispatch[$name] = $bound
+}
+foreach ($name in @("R_GETOPTS","R_EXPRVAL","R_STMT","R_CCOUT","R_STRUCT","R_PREP")) {
+    if (-not $seenLinkDispatch.ContainsKey($name)) {
+        throw "*** BUILD FAILED: LINK99 did not demonstrate resident binding for $name"
+    }
+}
+Write-Output ("OVL99 linker audit: {0} referenced R_* names resolve in resident memory." -f $seenLinkDispatch.Count)
+
 Require-File ".\SMALLC99.EXE"
 
 if (-not (Test-Path -LiteralPath $MONITOR_DIR -PathType Container)) {

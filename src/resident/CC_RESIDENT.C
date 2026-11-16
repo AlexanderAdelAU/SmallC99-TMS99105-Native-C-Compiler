@@ -273,18 +273,21 @@ needlval()
 parse()
 {
     while(eof == 0) {
-        if(amatch("extern", 6))
+        if(amatch("extern", 6)) {
             R_DODECL(EXTERNAL);
+        }
         else if(R_DODECL(STATIC))
             ;
         else if(match("#asm"))
             doasm();
         else if(match("#include"))
             R_INCLUDE();
-        else if(match("#define"))
+        else if(match("#define")) {
             R_DEFINE();
-        else
+        }
+        else {
             R_DOFN();
+        }
 
         blanks();
     }

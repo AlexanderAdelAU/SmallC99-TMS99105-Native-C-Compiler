@@ -1,0 +1,46 @@
+name: SMALLC99 clean diagnostic A/B build
+
+on:
+  push:
+    branches:
+      - ovl99-clean-no-diagnostics-ab
+    paths:
+      - 'src/resident/SMALLC99.C'
+      - 'src/resident/CC_RESIDENT.C'
+      - 'src/resident/CC_SCAN_SYM.C'
+      - 'src/resident/OVCALL.A99'
+      - '.github/workflows/build-ovl99-clean-ab.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout clean test branch
+        uses: actions/checkout@v4
+
+      - name: Create monitor deployment directory required by existing build script
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path 'C:\Development-W11DEV\Eclipse Workspace\TMS99105_SBC\MONITOR' -Force | Out-Null
+
+      - name: Build exact clean-branch compiler with repository PowerShell script
+        shell: pwsh
+        run: |
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\make_smallc99.ps1
+          if ($LASTEXITCODE -ne 0) { throw "make_smallc99.ps1 failed with exit code $LASTEXITCODE" }
+          if (!(Test-Path -LiteralPath '.\build_tms\SMALLC99.EXE' -PathType Leaf)) {
+            throw 'No SMALLC99.EXE was produced'
+          }
+
+      - name: Record binary hash
+        shell: pwsh
+        run: |
+          Get-FileHash -Algorithm SHA256 '.\build_tms\SMALLC99.EXE' | Format-List
+
+      - name: Upload the clean SMALLC99.EXE for hardware A/B testing
+        uses: actions/upload-artifact@v4
+        with:
+          name: SMALLC99-clean-no-diagnostics-ab
+          path: build_tms/SMALLC99.EXE
+          if-no-files-found: error
