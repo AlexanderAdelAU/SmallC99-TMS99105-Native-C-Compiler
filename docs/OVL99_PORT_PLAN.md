@@ -495,3 +495,52 @@ note whether the second invocation fails. If it fails even fresh,
 resume OVCALL/layout/stack investigation with a minimal resident
 startup marker, and compare a known-good `main` compiler under the
 identical fresh boot procedure.
+
+
+## Reproduced clean EXE failure after hard boot (16 November 2026)
+
+The user performed a **hard boot**, XMODEM-transferred the clean
+`SMALLC99.EXE` at address `1000`, then ran `SMALLC99 CTEST.C -V`
+as the first compilation. It printed the compile banner and failed:
+
+```text
+INT2 PC:0DD0 WP:0230 ST:2087 SEG:0000 PAGE:0000
+```
+
+This **rules out an in-session stale overlay/page state as a sufficient
+explanation**. The diagnostic OVL99 build passed 133/133 on the same
+hardware; the clean build fails even following cold boot. Treat this
+as an unresolved, possibly layout-sensitive runtime regression until
+a cause is established. The low PC is outside the loaded application's
+`>1000..>7FFF` resident code window and may indicate an invalid
+return address or corruption; that is a hypothesis, not proof.
+
+The author also saw a prior
+`*** line 26: macro string queue full` message during an earlier
+clean-build attempt. The macro queue is 1050 bytes, but this language
+test needs only a few dozen bytes of replacement text. Do not merely
+increase its capacity.
+
+**Current temporary diagnostic changes (integration branch only):**
+
+- In the shared `OVCALL`, validate the caller's restored return word
+  is at least `>1000` before `RET`; otherwise print
+  `D701` and the invalid return word, then stop with the existing
+  `DEAD` guard. This distinguishes a broken OVCALL return frame from
+  other causes of an INT2 under `>1000`.
+- Resident `MACDIAG` prints `D110` and the raw 16-bit `macptr`
+  value. Call it after successful file open, after header generation,
+  and immediately before the compiler reports a first error.
+- These probes neither change the declared overlay layout nor
+  intentionally reset or enlarge any macro buffers. **They do change
+  resident code layout**, so any successful diagnostic build must
+  later be re-verified without probes.
+
+On the next SBC run, look for `D110` records and/or a `D701`
+signature before the INT2. If `D701` appears, the raw invalid return
+address is decisive evidence for a corrupted OVCALL return. If the
+initial `macptr` is already beyond `>0419`, focus on initialization
+or bad BSS; if it starts sane but climbs unexpectedly, trace macro
+processing and PREP page restoration. Absence of both should direct
+attention to paths earlier than file-open or outside these probes.
+No production fix or merge is claimed.
