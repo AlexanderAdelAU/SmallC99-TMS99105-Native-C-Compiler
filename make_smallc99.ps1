@@ -67,11 +67,10 @@ function Assemble-R99 {
     }
 }
 
-$LINK99_VER = "3.10.0"   # 3.10.0: -Y overlay map (table + thunks built by the linker); 3.9.59: XPOFF marker fix
-$DREL_VER   = "Version 4.0"
+$LINK99_VER = "3.10.1"   # 3.10.1: reference-slot lint (replaces drel -c); 3.10.0: -Y overlay map
 $MONITOR_DIR = "C:\Development-W11DEV\Eclipse Workspace\TMS99105_SBC\MONITOR"
 $TOOLCHAIN_DIR = Join-Path $PSScriptRoot "toolchain"
-$HOST_TOOLS = @("smallcp.exe","r99.exe","drel.exe","link99.exe")
+$HOST_TOOLS = @("smallcp.exe","r99.exe","link99.exe")   # drel is not needed to build
 
 # Runtime dependency boundary: binary-only inputs from .\lib.
 # This build does not require or inspect any IOLIB99 C/A99 source tree.
@@ -202,17 +201,13 @@ foreach ($tool in $HOST_TOOLS) {
 
 Set-Location -LiteralPath "build_tms"
 
-foreach ($tool in @("smallcp.exe","r99.exe","drel.exe","link99.exe")) { Require-File ".\$tool" }
+foreach ($tool in $HOST_TOOLS) { Require-File ".\$tool" }
 foreach ($input in @("SMALLC99.C","CC_CD99.C","CC_CG99.C","CC_CG99T.C","CC_CL99.C","M38B.C","TEST.C","M38D.C","M38DPROBE.A99","OVLMAP.TXT")) { Require-File ".\$input" }
 foreach ($name in $LIB_INPUTS) { Require-File ".\$name" }
 
 $linkAscii = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes((Resolve-Path ".\link99.exe")))
 if ($linkAscii -notmatch [regex]::Escape($LINK99_VER)) {
     throw "*** BUILD FAILED: copied link99.exe does not contain version $LINK99_VER"
-}
-$drelAscii = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes((Resolve-Path ".\drel.exe")))
-if ($drelAscii -notmatch [regex]::Escape($DREL_VER)) {
-    throw "*** BUILD FAILED: copied drel.exe does not contain $DREL_VER"
 }
 
 Write-Output "`n================================================"
@@ -322,7 +317,7 @@ if ($cgtText -notmatch 'code\[SWITCH\]\s*=\s*"\.\\tCALL @_ccswitc<e>') {
 if ($cgtText -match 'code\[SWITCH\].*<b>switc') {
     throw "*** BUILD FAILED: SWITCH is incorrectly using the BL helper prefix"
 }
-# Each OVL_CGEN module must stay inside its own 4K virtual page. DREL reports
+# Each OVL_CGEN module must stay inside its own 4K virtual page. LINK99 reports
 # both sizes below; the overlay as a whole now has 8K of address space.
 if ($cgtText -match 'code\[(ENTER|RETURN|POINT1s)\].*R9') {
     throw "*** BUILD FAILED: generated frame templates still use R9 instead of FP"
@@ -486,50 +481,20 @@ Assemble-R99 "M38DPROBE"
 
 foreach ($overlay in $OVERLAYS) { Assemble-R99 $overlay.Name }
 
-$overlayFiles = @()
-foreach ($overlay in $OVERLAYS) { $overlayFiles += "$($overlay.Name).R99" }
-$overlayLint = & .\drel.exe -c @overlayFiles 2>&1 | Out-String
-$overlayLintExit = $LASTEXITCODE
-Write-Output "`n================================================"
-Write-Output "Overlay chain lint"
-Write-Output "================================================"
-Write-Output $overlayLint
-if ($overlayLint -notmatch "all chains conform" -or $overlayLintExit -ne 0) {
-    throw "*** BUILD FAILED: TMS overlay chain lint"
+# Bootstrap audit: no compiler overlay may call the switch helper.  Read
+# from the generated assembly (code lines only; smallcp's source comments
+# start with ';').
+foreach ($overlay in $OVERLAYS) {
+    foreach ($line in (Get-Content -LiteralPath ".\$($overlay.Name).A99")) {
+        if ($line -match '^[^;]*\b_ccswitc\b') {
+            throw "*** BUILD FAILED: bootstrap-generated compiler overlay $($overlay.Name) still references _ccswitc"
+        }
+    }
 }
-if ($overlayLint -match '(?im)XREFS\s+group:\s+_ccswitc\b') {
-    throw "*** BUILD FAILED: bootstrap-generated compiler overlay still references _ccswitc"
-}
-Write-Output "Bootstrap audit: compiler overlays have no _ccswitc XREFs."
+Write-Output "Bootstrap audit: compiler overlays have no _ccswitc references."
 
 foreach ($name in @("SMALLC99","CC_PORT","OVCALL","CC_CD99","CC_RESIDENT","CC_SCAN_SYM","CC_DATA","OVLMGR","SPYOUT","CC_STRU")) {
     Assemble-R99 $name
-}
-
-$residentFiles = @("SMALLC99.R99","CC_PORT.R99","OVCALL.R99","CC_CD99.R99","CC_RESIDENT.R99","CC_SCAN_SYM.R99","CC_DATA.R99","CC_STRU.R99")
-$residentLint = & .\drel.exe -c @residentFiles 2>&1 | Out-String
-$residentLintExit = $LASTEXITCODE
-Write-Output "`n================================================"
-Write-Output "Resident chain lint"
-Write-Output "================================================"
-Write-Output $residentLint
-if ($residentLint -notmatch "all chains conform" -or $residentLintExit -ne 0) {
-    throw "*** BUILD FAILED: TMS resident chain lint"
-}
-
-Write-Output "`n================================================"
-Write-Output "Overlay budgets"
-Write-Output "================================================"
-foreach ($overlay in $OVERLAYS) {
-    $pattern = "MODULE\s+" + [regex]::Escape($overlay.Name) + "\s+size=([0-9A-F]+)"
-    $match = [regex]::Match($overlayLint, $pattern, [Text.RegularExpressions.RegexOptions]::IgnoreCase)
-    if (-not $match.Success) { throw "*** BUILD FAILED: no size for $($overlay.Name)" }
-    $used = [Convert]::ToInt32($match.Groups[1].Value,16)
-    $chainFree = 0x0FC0 - $used
-    Write-Output ("  {0,-10} used {1,4} chain-free {2,4}" -f $overlay.Name,$used,$chainFree)
-    if ($chainFree -lt 0) {
-        throw "*** BUILD FAILED: $($overlay.Name) exceeds LINK99 chain-safe limit >0FC0"
-    }
 }
 
 # No -P: every overlay's page comes from the map.
@@ -566,6 +531,25 @@ if ($linkOutput -match '(?im)^\s*-\s*Unresolved:' -or
 if ($linkOutput -notmatch ("Version\s+" + [regex]::Escape($LINK99_VER) + "\b")) {
     throw "*** BUILD FAILED: wrong LINK99 version"
 }
+# Overlay budgets, from LINK99's -M listing ("N Code Bytes at ... MODULE",
+# the module's PSIZE - the size DREL used to report).  LINK99 itself
+# rejects a module that overruns its 4K page; the >0FC0 budget keeps the
+# 64-byte margin these builds have always kept.
+Write-Output "`n================================================"
+Write-Output "Overlay budgets"
+Write-Output "================================================"
+foreach ($overlay in $OVERLAYS) {
+    $pattern = '(?im)^\s*([0-9A-F]+) Code Bytes at\s+\S+\s+\S+\s+' + [regex]::Escape($overlay.Name) + '\s*$'
+    $match = [regex]::Match($linkOutput, $pattern)
+    if (-not $match.Success) { throw "*** BUILD FAILED: LINK99 listed no size for $($overlay.Name)" }
+    $used = [Convert]::ToInt32($match.Groups[1].Value,16)
+    $chainFree = 0x0FC0 - $used
+    Write-Output ("  {0,-10} used {1,4} free {2,4}" -f $overlay.Name,$used,$chainFree)
+    if ($chainFree -lt 0) {
+        throw "*** BUILD FAILED: $($overlay.Name) exceeds the >0FC0 page budget"
+    }
+}
+
 # The table LINK99 built.  These are the layouts the compiler depends
 # on, checked against what was actually linked rather than against an
 # include file:
