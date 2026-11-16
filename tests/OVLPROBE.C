@@ -1,7 +1,4 @@
-/* OVLPROBE.C - staged SMALLC99 OVL99 compiler regression.
-   Start with the exact CTEST conditional-macro prelude.
-   Add one CTEST declaration at a time between extern and main.
-   Compile with the SAME SMALLC99.EXE for every stage. */
+/* OVLPROBE.C - Test 5: add int garr[10].\n   Keep SMALLC99.EXE unchanged while isolating CTEST failure. */
 
 #define TEN 10
 #define TWENTY (TEN * 2)
@@ -21,7 +18,13 @@
 
 extern int putchar();
 
-/* INSERT ONE DECLARATION HERE PER TEST. */
+int tests, passed, failed;
+int sidefx;
+int zglob;
+int zarr[4];
+int gi;
+char gc;
+int garr[10];    /* Test 5: the only new declaration */
 
 main()
 {
