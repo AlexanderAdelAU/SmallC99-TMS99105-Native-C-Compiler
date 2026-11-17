@@ -533,8 +533,9 @@ if ($linkOutput -notmatch ("Version\s+" + [regex]::Escape($LINK99_VER) + "\b")) 
 }
 # Overlay budgets, from LINK99's -M listing ("N Code Bytes at ... MODULE",
 # the module's PSIZE - the size DREL used to report).  LINK99 itself
-# rejects a module that overruns its 4K page; the >0FC0 budget keeps the
-# 64-byte margin these builds have always kept.
+# rejects a module that overruns its 4K page.  The budget is the full page:
+# the old >0FC0 limit was EXE block padding, fixed in link99 3.10.3 and
+# proven on the SBC with a >FF0-byte overlay.
 Write-Output "`n================================================"
 Write-Output "Overlay budgets"
 Write-Output "================================================"
@@ -543,10 +544,10 @@ foreach ($overlay in $OVERLAYS) {
     $match = [regex]::Match($linkOutput, $pattern)
     if (-not $match.Success) { throw "*** BUILD FAILED: LINK99 listed no size for $($overlay.Name)" }
     $used = [Convert]::ToInt32($match.Groups[1].Value,16)
-    $chainFree = 0x0FC0 - $used
+    $chainFree = 0x1000 - $used
     Write-Output ("  {0,-10} used {1,4} free {2,4}" -f $overlay.Name,$used,$chainFree)
     if ($chainFree -lt 0) {
-        throw "*** BUILD FAILED: $($overlay.Name) exceeds the >0FC0 page budget"
+        throw "*** BUILD FAILED: $($overlay.Name) exceeds its 4K page"
     }
 }
 
