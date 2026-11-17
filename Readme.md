@@ -216,8 +216,11 @@ CGEN is `8/11 9/13` with `ccout` in >8000 and `setcodes` in >9000, CLI is
   to an entry in another overlay: the callee's pages can occupy the same
   segment. `swstab`, the macro pools and `code[]` all live in overlay pages.
 
-See `docs/OVERLAY_OWNERSHIP_CONTRACT.md` for the ownership contract and
-`docs/OVL99_PORT_PLAN.md` for how the port was staged and tested on the SBC.
+See [OVL99.md](https://github.com/AlexanderAdelAU/TMS99105-Native-Toolchain/blob/main/OVL99.md)
+for OVL99 in general (runtime, table, map format, rules), including why SMALLC99
+needs the always-framed `OVCALL`; `docs/OVERLAY_OWNERSHIP_CONTRACT.md` for the
+ownership contract; and `docs/OVL99_PORT_PLAN.md` for how the port was staged and
+tested on the SBC.
 
 ### How a compile flows
 
