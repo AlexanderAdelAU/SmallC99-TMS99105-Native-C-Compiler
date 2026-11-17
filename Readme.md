@@ -291,7 +291,7 @@ If you only want to compile on the SBC, copy its `bin/` folder and
 |---|---|
 | `smallcp.exe` (Small-C/Plus 1.06g) | Compiles SMALLC99's own C sources |
 | `r99.exe` | TMS9900 relocating assembler |
-| `link99.exe` **3.10.2 or later** | Linker; produces the paged EXE and, with `-Y`, the overlay table and thunks. Also checks every object's external-reference slots |
+| `link99.exe` **3.10.3 or later** | Linker; produces the paged EXE and, with `-Y`, the overlay table and thunks. Also checks every object's external-reference slots |
 | `drel.exe` | Object-file dump, for inspecting objects by hand. The build does not use it |
 
 ### Build

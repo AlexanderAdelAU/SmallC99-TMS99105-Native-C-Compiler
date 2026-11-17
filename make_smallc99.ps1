@@ -67,7 +67,7 @@ function Assemble-R99 {
     }
 }
 
-$LINK99_VER = "3.10.2"   # 3.10.2: resident modules must end below the window; 3.10.1: slot lint; 3.10.0: -Y
+$LINK99_VER = "3.10.3"   # 3.10.3: per-segment pages, no block spill; 3.10.2: late resident; 3.10.1: slot lint; 3.10.0: -Y
 $MONITOR_DIR = "C:\Development-W11DEV\Eclipse Workspace\TMS99105_SBC\MONITOR"
 $TOOLCHAIN_DIR = Join-Path $PSScriptRoot "toolchain"
 $HOST_TOOLS = @("smallcp.exe","r99.exe","link99.exe")   # drel is not needed to build
