@@ -158,7 +158,7 @@ per segment. SMALLC99 uses them like this:
 SMALLC99 uses **OVL99**, the overlay runtime it shares with FileEdit. Every
 cross-overlay call goes through one resident gate. The per-entry glue is built
 by the linker itself from one declaration file, `OVLMAP.TXT`, as 2.11BSD's
-`ovld` did (`link99 -YOVLMAP.TXT`, LINK99 3.10.0 or later).
+`ovld` did (`link99 -YOVLMAP.TXT`, LINK99 3.10.3 or later).
 
 ```
 overlay code           resident                                 overlay code
@@ -283,7 +283,9 @@ The native assembler, linker and editor, and ready-built copies of all four
 SBC programs including `SMALLC99.EXE`, are in
 **[TMS99105-Native-Toolchain](https://github.com/AlexanderAdelAU/TMS99105-Native-Toolchain)**.
 If you only want to compile on the SBC, copy its `bin/` folder and
-`lib/IOLIB99.LIB` from this repo to the board and skip the build below.
+`lib/IOLIB99.LIB` with `lib/IOLIB99.NDX` from this repo to the board and skip
+the build below.  (`bin/` holds the copies from that repository's first
+commit; the build scripts make the current versions.)
 
 ### Host toolchain (`toolchain/`)
 
@@ -314,6 +316,15 @@ R99 PROG                    assemble -> PROG.R99
 LINK99 PROG.R99 IOLIB99.LIB link -> PROG
 PROG                        run
 ```
+
+The SBC LINK99 also links overlaid programs (`-P`, or the same `-Y` overlay
+map the Windows link99 reads) and takes long argument lists from a file
+(`LINK99 @PROG.LNK`); several files can be sent to the board in one XMODEM
+transfer with PACK99/UNPACK.  See the
+[toolchain README](https://github.com/AlexanderAdelAU/TMS99105-Native-Toolchain).
+
+SMALLC99 itself is still linked on the PC: on the SBC, file names are 8.3,
+and `CC_EXPR_A` to `CC_EXPR_D` would all become `CC_EXPR_`.
 
 ---
 
