@@ -326,6 +326,16 @@ map the Windows link99 reads) and takes long argument lists from a file
 transfer with PACK99/UNPACK.  See the
 [toolchain README](https://github.com/AlexanderAdelAU/TMS99105-Native-Toolchain).
 
+**32-bit arithmetic.** SMALLC99 has no `long` yet. Until it does, link
+`lib/LCALL.R99` and hold 32-bit values as `int v[2]` (high word first):
+`ladd(r, a, b)`, `lmul`, `ldiv`, `lcmp`, shifts, and decimal text both ways
+(`ltod`, `dtol`); the full list is at the top of `lcall.A99` in the
+[linker repository](https://github.com/AlexanderAdelAU/Relocating-Assembler-and-Linker-Loader-for-TMS99000/blob/main/iolib99/src/lcall.A99).
+
+```
+LINK99 PROG.R99 LCALL.R99 IOLIB99.LIB
+```
+
 SMALLC99 itself is still linked on the PC: on the SBC, file names are 8.3,
 and `CC_EXPR_A` to `CC_EXPR_D` would all become `CC_EXPR_`.
 
@@ -358,7 +368,7 @@ on the hardware has matched the emulator exactly.
 | `src/resident/` | Driver, scanner, symbol tables, data, output layer, overlay manager (`OVLMGR.A99`), OVL99 call gate (`OVCALL.A99`), `elsize()` |
 | `src/overlays/` | The overlay modules: `CC_EXPR_A`–`D`, `CC_STMT`, `CC_STMT_R`, `CC_DECL`, `CC_STRD`, `CC_PREP`, `CC_MACS`, `CC_DFUN`, `CC_CG99`, `CC_CG99T`, `CC_CL99` |
 | `OVLMAP.TXT` | The OVL99 overlay map, read by `link99 -Y` |
-| `lib/` | C run-time objects and libraries (`CLIB99`, `IOLIB99`) |
+| `lib/` | C run-time objects and libraries (`CLIB99`, `IOLIB99`), and `LCALL.R99` (32-bit arithmetic) |
 | `tests/` | Regression programs |
 | `toolchain/` | Host tools |
 | `docs/` | Design notes and contracts |
