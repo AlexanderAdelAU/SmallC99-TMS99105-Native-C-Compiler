@@ -23,6 +23,9 @@
 ;                                 (return address, previous owner)
 ;    TRC                          the last 8 overlay entries called,
 ;                                 then OVTPOS (the next slot)
+;    S8 S9 SA SB                  word sums of each 256-byte block of
+;                                 segments 8-B as mapped (PSEL on), to
+;                                 compare against the EXE image
 ;
 ;  and then hands the fault to the monitor's own handler, which prints
 ;  its usual line and enters the monitor.
@@ -33,6 +36,8 @@
         DXOP    WHEX,10
         DXOP    WRITE,12
         DXOP    MESG,14
+        DXOP    PSEL_DIS,0
+        DXOP    PSEL_EN,1
 
 R0      EQU     0
 R1      EQU     1
@@ -60,6 +65,7 @@ MAPWIN  EQU     080C0H          ;CRU base of the 16 map registers
 OLDWP:  WORD    0               ;the monitor's INT2 vector, while ours
 OLDPC:  WORD    0               ;is in place
 HWS:    BSS     32              ;SC99_INT2's workspace
+HST:    WORD    0               ;SC99_INT2's own ST on entry
 
 PORT_INIT:
         CALL    @OVLMGR_INIT
@@ -85,6 +91,8 @@ PDONE1: RET
 ; and ST of the fault.
 ;-------------------------------------------------------------------
 SC99_INT2:
+        STST    R0
+        MOV     R0,@HST
         MESG    @T_HDR
         WHEX    R14
         MESG    @T_WP
@@ -150,6 +158,33 @@ HOVS1:
         BL      @HWORDS
         MOV     @OVTPOS,R3
         WHEX    R3
+
+        ; block sums of segments 8-B with the fault's map, PSEL on
+        PSEL_EN
+        LI      R1,08000H
+HSUM0:  MESG    @T_SUM          ;new line: "S" + segment digit
+        MOV     R1,R3
+        SRL     R3,12
+        AI      R3,'0'          ;8-B -> '8','9','A','B'
+        CI      R3,'9'
+        JLE     HSUM1
+        AI      R3,7
+HSUM1:  SWPB    R3
+        WRITE   R3
+        BL      @HSPACE
+        LI      R0,16           ;16 blocks of 256 bytes
+HSUM2:  CLR     R3
+        LI      R2,128
+HSUM3:  A       *R1+,R3
+        DEC     R2
+        JNE     HSUM3
+        WHEX    R3
+        BL      @HSPACE
+        DEC     R0
+        JNE     HSUM2
+        CI      R1,0C000H
+        JNE     HSUM0
+        PSEL_DIS
         MESG    @T_NL
 
         ; hand over to the monitor's handler with the fault context
@@ -161,7 +196,7 @@ HOVS1:
         MOV     R15,@30(R2)
         MOV     R2,R13
         MOV     R1,R14
-        STST    R15
+        MOV     @HST,R15
         RTWP
 
 ; print R2 words from *R1 (R1 advances), each followed by a space
@@ -217,6 +252,10 @@ T_OVS:  BYTE    0DH,0AH
         EVEN
 T_TRC:  BYTE    0DH,0AH
         TEXT    'TRC '
+        BYTE    0
+        EVEN
+T_SUM:  BYTE    0DH,0AH
+        TEXT    'S'
         BYTE    0
         EVEN
 T_NL:   BYTE    0DH,0AH,0
