@@ -260,7 +260,11 @@ callfunc(ptr)  char *ptr; {      /* symbol table entry or 0 */
     if(match(",") == 0) break;
     }
   need(")");
-  if(streq(ptr + NAME, "CCARGC") == 0) gen(ARGCNTn, nargs >> LBPW);
+  /* Only printf and its five relatives are told how many arguments
+  ** they got, the way smallcp tells them (see isvarg in CC_EXPR_A):
+  ** CLIB99 reads the count back with _argcnt().  No other callee
+  ** looks for a count, so nothing is loaded for the rest. */
+  if(ptr) if(isvarg(ptr + NAME)) gen(ARGCNTn, nargs >> LBPW);
   if(ptr) gen(CALLm, ptr);
   else    gen(CALL1, 0);
   gen(ADDSP, csp + nargs);

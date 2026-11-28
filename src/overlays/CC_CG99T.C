@@ -121,7 +121,6 @@ setcodes1()
     code[ADDSP]   = ".?\tAI SP,<n>\n??";
     code[AND12]   = ".\tINV R3\n\tSZC R3,R4\n";
     code[ANEG1]   = ".\tNEG R4\n";
-    code[ARGCNTn] = ".?\tLI R5,<n>?\tCLR R5?\n";
     code[ASL12]   = ".<b>asl<e>\n";
     code[ASR12]   = ".<b>asr<e>\n";
     /* Unsigned >> uses the existing zero-count-safe logical-shift helper. */
@@ -234,6 +233,9 @@ setcodes6()
 
 setcodes7()
 {
+    /* printf and its relatives only: the count, the way smallcp
+    ** passes it (CC_EXPR_D, isvarg).  Here for literal-queue room. */
+    code[ARGCNTn] = ".?\tLI R1,<n>?\tCLR R1?\n\tBL @_setargc<e>\n";
     code[BYTEr0]  = ".\tBSS <n>\n";
     code[WORD_]   = ".\tWORD ";
     code[WORDn]   = ".\tWORD <n>\n";

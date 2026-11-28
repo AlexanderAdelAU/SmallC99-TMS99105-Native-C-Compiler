@@ -70,6 +70,10 @@ ALL POINTER TESTS PASSED
   blocks with local declarations.
 - **Functions:** recursion; calls through a function pointer `(*fp)()`;
   functions are untyped and return `int`, in classic Small-C style.
+- **Calls to `printf`, `fprintf`, `sprintf`, `scanf`, `fscanf`, `sscanf`**
+  pass their argument count the way smallcp does (`LI R1,n` /
+  `BL @_setargc`), which is how CLIB99's versions read it. Other calls pass
+  no count.
 - **Constants:** decimal, hex, octal, character constants with escapes,
   strings.
 - **Preprocessor:** `#define` (object-like), `#include` (one level),
