@@ -1,0 +1,2 @@
+# Build output: make_smallc99.ps1 deletes and recreates it every run
+build_tms/
