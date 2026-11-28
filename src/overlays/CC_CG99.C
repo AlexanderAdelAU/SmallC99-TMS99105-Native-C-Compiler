@@ -15,7 +15,7 @@
 ** template strings moved, so the per-pcode hot path remains on the original page.
 */
 
-#define PCODEMAX 75
+#define PCODEMAX 100
 #define NAME     7
 #define YES      1
 #define NO       0
@@ -94,6 +94,33 @@
 #define SWITCH   72
 #define XOR12    73
 #define LSR12    74
+
+/* optimizer-generated (peephole rules in CC_CG99.C) */
+#define ADD1n    75
+#define ADD21    76
+#define ADD2n    77
+#define ADDbpn   78
+#define ADDwpn   79
+#define DECbp    80
+#define DECwp    81
+#define POINT2m  82
+#define GETb1s   83
+#define GETb1su  84
+#define GETw1s   85
+#define GETw2m   86
+#define GETw2p   87
+#define GETw2s   88
+#define INCbp    89
+#define INCwp    90
+#define POINT2s  91
+#define PUSH2    92
+#define PUSHm    93
+#define PUSHp    94
+#define PUSHs    95
+#define rDEC2    96
+#define rINC2    97
+#define SUBbpn   98
+#define SUBwpn   99
 
 extern int litlab;
 extern int errflag;
@@ -194,5 +221,226 @@ int value;
         }
         else if(skip == NO) pchar(*cp++);
         else ++cp;
+    }
+}
+
+/*
+** ==== Peephole optimizer: J. E. Hendrix's Small-C 2.x CCC4 peep() ====
+**
+** dumpstage() (resident) hands each staged expression to qdump(), which
+** tries the rules below at every p-code before writing it with ccout().
+** A rule is a pattern, 0, then actions, 0:
+**
+**   pattern  p-codes to match in order, and checks at the position after
+**            the last one matched: pfree / sfree (R4 / R3 not needed
+**            later: isfree), _pop (the POP2 that matches a push).  any,
+**            rpri (a p-code that only loads R4) and comm (a commutative
+**            p-code) each match one entry.
+**   actions  a p-code sets the entry at the cursor; go|n moves the cursor
+**            n entries; gc|n / gv|n copy the code / value from n entries
+**            away; sum|n adds that value; neg negates; topop|p turns the
+**            matching POP2 into p-code p; ife|n / ifl|n do what follows
+**            up to a 0 only if the value == n / < n.
+**
+** The rules are Hendrix's, minus those that need 8086 addressing, with
+** pfree / sfree added wherever a rule drops a value the original left in
+** R4 or R3 (his code generator could assume it; this one's step() keeps
+** the address in R3 after a fetch).  Register effects come from the first
+** character of each template: '@' + 010 (uses R4) 020 (sets R4) 001 (uses
+** R3) 002 (sets R3).
+*/
+
+#define any    0x00FF
+#define _pop   0x00FE
+#define pfree  0x00FD
+#define sfree  0x00FC
+#define comm   0x00FB
+#define rpri   0x00FA
+#define go     0x0100
+#define gc     0x0200
+#define gv     0x0300
+#define sum    0x0400
+#define neg    0x0500
+#define ife    0x0600
+#define ifl    0x0700
+#define topop  0x0900
+#define p1     0x0001
+#define p2     0x0002
+#define p3     0x0003
+#define m1     0x00FF
+#define m2     0x00FE
+#define m3     0x00FD
+#define PRI    0x18     /* smallcp has no octal: 030 */
+#define SEC    0x03
+#define USES   0x09     /* 011 */
+#define ZAPS   0x12     /* 022 */
+#define NRULES 31
+
+extern int stage[];
+extern int usexpr;
+
+int *qnext, *qtail;
+int *rule[NRULES];
+
+extern setrules();
+
+/* the register-effect bits of a p-code's template; unknown = uses both */
+regs(pc) int pc;
+{
+    char *cp;
+    if(pc < 1 || pc >= PCODEMAX) return USES;
+    cp = code[pc];
+    if(cp == 0) return USES;
+    return *cp - '@';
+}
+
+ispush(pc) int pc;
+{
+    return pc == PUSH1 || pc == PUSH2 || pc == PUSHm
+        || pc == PUSHp || pc == PUSHs || pc == ENTER;
+}
+
+iscomm(pc) int pc;
+{
+    return pc == ADD12 || pc == AND12 || pc == EQ12 || pc == MUL12
+        || pc == MUL12u || pc == NE12 || pc == OR12 || pc == XOR12;
+}
+
+/*
+** Is R4 (PRI) or R3 (SEC) free at pp: set before it is used again?
+** At the end of the expression R3 is free, and R4 is free only if
+** the statement does not use the value (usexpr).
+*/
+isfree(reg, pp) int reg, *pp;
+{
+    int r;
+    while(pp < qtail) {
+        r = regs(*pp);
+        if(r & USES & reg) return 0;
+        if(r & ZAPS & reg) return 1;
+        pp = pp + 2;
+    }
+    if(usexpr) return reg & 1;
+    return 1;
+}
+
+/*
+** The POP2 that takes the value pushed just before next, or 0.
+** Arguments to a call are not popped; ADDSP discards them.
+*/
+getpop(next) int *next;
+{
+    int level;
+    level = 0;
+    while(1) {
+        if(next >= qtail) return 0;
+        if(*next == POP2) {
+            if(level) --level;
+            else return next;
+        }
+        else if(*next == ADDSP) {
+            level = level - (next[1] >> 1);
+            if(level < 0) return 0;
+        }
+        else if(ispush(*next)) ++level;
+        next = next + 2;
+    }
+}
+
+/* try one rule at qnext; YES if it changed anything */
+peep(seq) int *seq;
+{
+    int *next, *pop, n, k, skip, reply;
+    next = qnext;
+    pop = 0;
+    while(*seq) {
+        k = *seq;
+        if(k == pfree) {
+            if(isfree(PRI, next) == 0) return 0;
+        }
+        else if(k == sfree) {
+            if(isfree(SEC, next) == 0) return 0;
+        }
+        else if(k == _pop) {
+            if((pop = getpop(next)) == 0) return 0;
+        }
+        else {
+            if(next >= qtail) return 0;
+            if(k == rpri) {
+                if(regs(*next) != 0x10) return 0;   /* only sets R4 */
+            }
+            else if(k == comm) {
+                if(iscomm(*next) == 0) return 0;
+            }
+            else if(k != any) {
+                if(*next != k) return 0;
+            }
+            next = next + 2;
+        }
+        ++seq;
+    }
+    reply = skip = 0;
+    while(*(++seq) || skip) {
+        if(skip) {
+            if(*seq == 0) skip = 0;
+            continue;
+        }
+        k = *seq & 0xFF00;
+        if(k == 0) {                    /* a p-code for the cursor */
+            qnext[0] = *seq;
+            reply = 1;
+            continue;
+        }
+        n = *seq & 0xFF;
+        if(n > 127) n = n - 256;
+        if(k == ife) {
+            if(qnext[1] != n) skip = 1;
+        }
+        else if(k == ifl) {
+            if(qnext[1] >= n) skip = 1;
+        }
+        else if(k == go) {
+            qnext = qnext + n + n;
+            reply = 1;
+        }
+        else {
+            if(k == gc) qnext[0] = qnext[n + n];
+            else if(k == gv) qnext[1] = qnext[n + n + 1];
+            else if(k == sum) qnext[1] = qnext[1] + qnext[n + n + 1];
+            else if(k == neg) qnext[1] = -qnext[1];
+            else if(k == topop) {
+                pop[0] = n;
+                pop[1] = qnext[1];
+            }
+            reply = 1;
+        }
+    }
+    return reply;
+}
+
+/*
+** Write the staged p-codes from stage[] to end, optimized.  Called by
+** the resident dumpstage() through R_DUMP.
+*/
+qdump(end) int *end;
+{
+    int i, tries;
+    if(rule[0] == 0) setrules();
+    qnext = stage;
+    qtail = end;
+    while(qnext < qtail) {
+        i = 0;
+        tries = 0;
+        while(i < NRULES) {
+            if(peep(rule[i])) {
+                if(++tries < 40) {      /* a change: try them all again */
+                    i = 0;
+                    continue;
+                }
+            }
+            ++i;
+        }
+        if(qnext < qtail) ccout(qnext[0], qnext[1]);
+        qnext = qnext + 2;
     }
 }

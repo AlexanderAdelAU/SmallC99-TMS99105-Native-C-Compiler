@@ -135,8 +135,8 @@ per segment. SMALLC99 uses them like this:
 | Region | Contents |
 |---|---|
 | Segment 0 | Common memory: the shell's workspace, FCB, BDOS gate and stack |
-| Segments 1–7 (`>1000`–`>7591`) | The resident compiler, always mapped: driver, scanner, symbol tables, output layer, overlay manager, OVL99 call gate and thunks |
-| `>7592`–`>7FFF` | The C run-time heap, about 2,670 bytes (file buffers; an `#include` needs ~1,700 bytes of it) |
+| Segments 1–7 (`>1000`–`>756D`) | The resident compiler, always mapped: driver, scanner, symbol tables, output layer, overlay manager, OVL99 call gate and thunks |
+| `>756E`–`>7FFF` | The C run-time heap, about 2,700 bytes (file buffers; an `#include` needs ~1,700 bytes of it) |
 | Segments 8–B (`>8000`–`>BFFF`) | The overlay window: one overlay owns it at a time |
 | Segments C–F | The shell, the BDOS and the ROM — never written by the compiler |
 
@@ -153,7 +153,7 @@ per segment. SMALLC99 uses them like this:
 | 3 | `DECL` — declarations | Global variables and their initial values |
 | 4 | `PREP` — preprocessor | Reading source lines, `#define`, `#include`, `#ifdef`, `#asm`, macro table |
 | 5 | `DFUN` — define function | Function headers and parameter declarations |
-| 6 | `CGEN` — code generator | Turns the compiler's p-codes into TMS9900 assembly from templates |
+| 6 | `CGEN` — code generator | Optimizes each expression's p-codes (peephole rules) and turns them into TMS9900 assembly from templates |
 | 7 | `CLI` — command line | Options and file names at start-up; error reports |
 | 8 | `STRD` — struct declarations | `struct`/`union` tags and member lists; the row types of multi-dimensional arrays |
 
@@ -208,7 +208,7 @@ assembly to write and nothing else to edit.
 - segments are contiguous and inside >8000–BFFF; no page is used twice.
 
 **Checked by the build**, from the linker's own output: STMT is `8/3 9/14`,
-CGEN is `8/11 9/13` with `ccout` in >8000 and `setcodes` in >9000, CLI is
+CGEN is `8/11 9/13 A/1` with `ccout` in >8000 and `setcodes` in >9000, CLI is
 `A/12`, and every `R_*` reference resolves inside resident memory.
 
 **Calling rules**
@@ -235,8 +235,14 @@ SMALLC99 is a single-pass compiler:
    and each function to **DFUN**, which parses its body through **STMT**.
 3. **STMT** and **EXPR** call `gen(pcode, value)` to record each operation
    in a resident staging buffer.
-4. **CGEN** expands the staged p-codes into assembly lines from its template
-   table and writes them to the `.A99` file.
+4. **CGEN** runs a peephole optimizer over each staged expression, then
+   expands the p-codes into assembly lines from its template table and writes
+   them to the `.A99` file. The optimizer is J. E. Hendrix's from Small-C 2.x
+   (`src/reference/CCC4.C`): 31 rewrite rules in `CC_CG99R` (>A000), run by
+   `qdump()` in `CC_CG99`. Each template's first character records which of
+   R4 and R3 it reads and sets, so a rule only drops a value nothing needs:
+   a local is loaded with one `MOV @n(FP),R4`, `x++` becomes `INC *R3`, and
+   a push and pop around a simple load becomes a register move.
 
 ### Types inside the compiler
 
@@ -370,7 +376,7 @@ on the hardware has matched the emulator exactly.
 | Folder | Contents |
 |---|---|
 | `src/resident/` | Driver, scanner, symbol tables, data, output layer, overlay manager (`OVLMGR.A99`), OVL99 call gate (`OVCALL.A99`), `elsize()` |
-| `src/overlays/` | The overlay modules: `CC_EXPR_A`–`D`, `CC_STMT`, `CC_STMT_R`, `CC_DECL`, `CC_STRD`, `CC_PREP`, `CC_MACS`, `CC_DFUN`, `CC_CG99`, `CC_CG99T`, `CC_CL99` |
+| `src/overlays/` | The overlay modules: `CC_EXPR_A`–`D`, `CC_STMT`, `CC_STMT_R`, `CC_DECL`, `CC_STRD`, `CC_PREP`, `CC_MACS`, `CC_DFUN`, `CC_CG99`, `CC_CG99T`, `CC_CG99R`, `CC_CL99` |
 | `OVLMAP.TXT` | The OVL99 overlay map, read by `link99 -Y` |
 | `lib/` | C run-time objects and libraries (`CLIB99`, `IOLIB99`), and `LCALL.R99` (32-bit arithmetic) |
 | `tests/` | Regression programs |
@@ -382,10 +388,11 @@ on the hardware has matched the emulator exactly.
 
 ## Roadmap
 
-1. **Code-generator peephole.** SMALLC99's code is about 31% larger than
-   smallcp's, mainly because each local or argument access takes four
-   instructions where one indexed `MOV @n(FP),R4` would do. Fixing it shrinks
-   every compiled program and frees space in the nearly full expression pages.
+1. **Code-generator peephole.** Done for loads, pushes, `++`/`--` and
+   constant arithmetic: the BYTE sieve went from 14.0 to 8.7 million
+   instructions (smallcp: 8.6 million), and the test programs' code is about
+   22% smaller. Still to do: inline comparisons (they call `_ccle` and its
+   relatives) and compound assignments in memory (`x += y`).
 2. **Self-hosting.** SMALLC99 already compiles all of its own sources without
    errors; once its code is dense enough, a stage-2 compiler built by
    SMALLC99 itself will replace smallcp for everyday builds.

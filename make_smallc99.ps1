@@ -122,6 +122,7 @@ $required = @(
     "src\resident\CC_CD99.C",
     "src\overlays\CC_CG99.C",
     "src\overlays\CC_CG99T.C",
+    "src\overlays\CC_CG99R.C",
     "src\overlays\CC_CL99.C",
     "src\fixtures\M38B.C",
     "src\fixtures\TEST.C",
@@ -182,6 +183,7 @@ Copy-Item -LiteralPath "src\resident\SMALLC99.C" -Destination "build_tms\SMALLC9
 Copy-Item -LiteralPath "src\resident\CC_CD99.C" -Destination "build_tms\CC_CD99.C" -Force
 Copy-Item -LiteralPath "src\overlays\CC_CG99.C" -Destination "build_tms\CC_CG99.C" -Force
 Copy-Item -LiteralPath "src\overlays\CC_CG99T.C" -Destination "build_tms\CC_CG99T.C" -Force
+Copy-Item -LiteralPath "src\overlays\CC_CG99R.C" -Destination "build_tms\CC_CG99R.C" -Force
 Copy-Item -LiteralPath "src\overlays\CC_CL99.C" -Destination "build_tms\CC_CL99.C" -Force
 Copy-Item -LiteralPath "src\fixtures\M38B.C" -Destination "build_tms\M38B.C" -Force
 Copy-Item -LiteralPath "src\fixtures\TEST.C" -Destination "build_tms\TEST.C" -Force
@@ -290,7 +292,7 @@ if ($cgtText -notmatch 'code\[POP2\].*MOV \*SP\+,R3') {
 }
 # Unsigned arithmetic must stay distinct from signed helpers.  This is the
 # tests\LANGTEST_LANGUAGE.C 311/312/313/315 regression contract.
-if ($cgtText -notmatch 'code\[LSR12\]\s*=\s*"\.<b>usr<e>') {
+if ($cgtText -notmatch 'code\[LSR12\]\s*=\s*".<b>usr<e>') {
     throw "*** BUILD FAILED: LSR12 must use the logical _ccusr helper"
 }
 if ($cgtText -notmatch 'code\[DIV12u\].*CLR R1.*MOV R3,R2.*DIV R4,R1.*MOV R1,R4') {
@@ -305,13 +307,13 @@ if ($cgtText -notmatch 'code\[ENTER\].*STWP WP.*MOV FP,\*SP.*MOV SP,FP') {
 if ($cgtText -notmatch 'code\[RETURN\].*MOV FP,SP.*MOV \*SP\+,FP.*RET') {
     throw "*** BUILD FAILED: CC_CG99T RETURN template does not restore SP from FP and exit with RET"
 }
-if ($cgtText -notmatch 'code\[CALLm\]\s*=\s*"\.\\tCALL @<m>') {
+if ($cgtText -notmatch 'code\[CALLm\]\s*=\s*".\\tCALL @<m>') {
     throw "*** BUILD FAILED: CC_CG99T CALLm must emit CALL, not BL"
 }
-if ($cgtText -match 'code\[CALL1\]\s*=\s*"\.\\tBL ') {
+if ($cgtText -match 'code\[CALL1\]\s*=\s*".\\tBL ') {
     throw "*** BUILD FAILED: CC_CG99T CALL1 must emit CALL, not BL"
 }
-if ($cgtText -notmatch 'code\[SWITCH\]\s*=\s*"\.\\tCALL @_ccswitc<e>') {
+if ($cgtText -notmatch 'code\[SWITCH\]\s*=\s*".\\tCALL @_ccswitc<e>') {
     throw "*** BUILD FAILED: SWITCH must emit XOP6 CALL @_ccswitc##, not BL"
 }
 if ($cgtText -match 'code\[SWITCH\].*<b>switc') {
@@ -388,6 +390,7 @@ Compile-C "CC_EXPR_D"
 Compile-C "CC_CD99"
 Compile-C "CC_CG99"
 Compile-C "CC_CG99T"
+Compile-C "CC_CG99R"
 Compile-C "CC_CL99"
 Compile-C "CC_STRD"
 Compile-C "CC_DATA"
@@ -414,9 +417,9 @@ if ($dataA99 -notmatch '(?is)op2:.*?WORD[ \t]+57,73,3,20,55,44,23,48,36,74,6,1.*
     throw "*** BUILD FAILED: generated CC_DATA.A99 does not contain unsigned op2 dispatch 74/17/50"
 }
 
-# PCODE 74 requires 75 two-byte entries.
-if ($cgA99 -notmatch '(?im)^code:[ \t]+BSS[ \t]+150\b') {
-    throw "*** BUILD FAILED: generated CC_CG99.A99 code[] is not 75 entries (150 bytes)"
+# PCODE 99 (the optimizer's SUBwpn) requires 100 two-byte entries.
+if ($cgA99 -notmatch '(?im)^code:[ \t]+BSS[ \t]+200\b') {
+    throw "*** BUILD FAILED: generated CC_CG99.A99 code[] is not 100 entries (200 bytes)"
 }
 
 function Require-GeneratedDirectTemplate {
@@ -448,7 +451,7 @@ Require-GeneratedDirectTemplate -Text $cgtA99 -CodeName "LSR12"  -ByteOffset 148
 Require-GeneratedDirectTemplate -Text $cgtA99 -CodeName "DIV12u" -ByteOffset 34  -NextCodeName "MOD12"
 Require-GeneratedDirectTemplate -Text $cgtA99 -CodeName "MOD12u" -ByteOffset 100 -NextCodeName "EQ12"
 
-Write-Output "Generated unsigned-semantics audit: op2 LSR12/DIV12u/MOD12u and 75-entry code table verified in A99."
+Write-Output "Generated unsigned-semantics audit: op2 LSR12/DIV12u/MOD12u and 100-entry code table verified in A99."
 
 $mainLog = $script:CompileLogs["SMALLC99"]
 foreach ($fn in @("main","ask","compinit","openfile","firstline","closefile","finish")) {
@@ -555,7 +558,8 @@ foreach ($overlay in $OVERLAYS) {
 # on, checked against what was actually linked rather than against an
 # include file:
 #   STMT  >8000 page 3 + >9000 page 14 (swstab lives in CC_STMT_R)
-#   CGEN  >8000 page 11 (ccout, code[]) + >9000 page 13 (setcodes)
+#   CGEN  >8000 page 11 (ccout, code[], qdump) + >9000 page 13 (setcodes)
+#         + >A000 page 1 (the peephole rules)
 #   CLI   >A000 page 12 only (a guest: never the window owner)
 $mapRows = @{}
 $inMap = $false
@@ -567,14 +571,14 @@ foreach ($line in ($linkOutput -split '\r?\n')) {
     if ($m.Success) { $mapRows[$m.Groups[2].Value] = $m.Groups[3].Value.Trim() -replace '\s+', ' ' }
     Write-Output ("  " + $line.Trim())
 }
-$expectRows = [ordered]@{ STMT = "8/3 9/14"; CGEN = "8/11 9/13"; CLI = "A/12" }
+$expectRows = [ordered]@{ STMT = "8/3 9/14"; CGEN = "8/11 9/13 A/1"; CLI = "A/12" }
 foreach ($ovl in $expectRows.Keys) {
     if (-not $mapRows.ContainsKey($ovl)) { throw "*** BUILD FAILED: LINK99 built no table row for $ovl" }
     if ($mapRows[$ovl] -ne $expectRows[$ovl]) {
         throw ("*** BUILD FAILED: {0} maps {1}, expected {2}" -f $ovl, $mapRows[$ovl], $expectRows[$ovl])
     }
 }
-Write-Output "OVL99 table audit: STMT 8/3 9/14, CGEN 8/11 9/13, CLI A/12 (guest)."
+Write-Output "OVL99 table audit: STMT 8/3 9/14, CGEN 8/11 9/13 A/1, CLI A/12 (guest)."
 
 # The CGEN routines must sit in the segments the table maps: ccout in
 # >8000-8FFF, setcodes in >9000-9FFF.  The thunks reach them as ~ccout and

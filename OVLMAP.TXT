@@ -29,8 +29,9 @@ CC_DECL      2    DECL     R_DODECL=dodeclare:tail
 CC_PREP      9    PREP     R_PREP=preprocess R_DEFINE=dodefine R_INCLUDE=doinclude R_DOASM=doasm
 CC_MACS     10    PREP     -
 CC_DFUN      6    DFUN     R_DOFN=dofunction:tail
-CC_CG99     11    CGEN     R_CCOUT=ccout
+CC_CG99     11    CGEN     R_CCOUT=ccout R_DUMP=qdump
 CC_CG99T    13    CGEN     R_SETCODES=setcodes
+CC_CG99R     1    CGEN     -
 CC_CL99     12    CLI      R_GETOPTS=getoptions R_ERROR=errrep
 CC_STRD     15    STRD     R_STRUCT=dostruct
 
