@@ -23,12 +23,24 @@
 ;                                 (return address, previous owner)
 ;    TRC                          the last 8 overlay entries called,
 ;                                 then OVTPOS (the next slot)
-;    S8 S9 SA SB                  word sums of each 256-byte block of
+;    S8000 .. SB000               word sums of each 256-byte block of
 ;                                 segments 8-B as mapped (PSEL on), to
 ;                                 compare against the EXE image
 ;
-;  and then hands the fault to the monitor's own handler, which prints
-;  its usual line and enters the monitor.
+;    INT                          R13-R15 (WP PC ST) of interrupt levels
+;                                 1-7, and XOP / XOP: of XOPs 0-15 - the
+;                                 linkage words as they stood at the
+;                                 fault, copied to SNAP before the dump
+;                                 itself runs an XOP
+;
+;  and then puts the monitor's vector back and hands the fault to the
+;  monitor's own handler, which prints its usual line and enters the
+;  monitor.
+;
+;  PORT_INIT also masks interrupts for the compile (LIMI 0) and
+;  PORT_DONE restores the mask: the console, BDOS and IDE are polled,
+;  and the timer and IDE interrupts share 16-byte-spaced workspaces
+;  with each other and with the XOPs.
 ;*******************************************************************
 
         DXOP    CALL,6
@@ -43,6 +55,8 @@ R0      EQU     0
 R1      EQU     1
 R2      EQU     2
 R3      EQU     3
+R5      EQU     5
+R6      EQU     6
 R11     EQU     11
 R12     EQU     12
 R13     EQU     13
@@ -52,6 +66,7 @@ R15     EQU     15
 INT2WP  EQU     0008H           ;level-2 vector: workspace
 INT2PC  EQU     000AH           ;level-2 vector: entry
 MAPWIN  EQU     080C0H          ;CRU base of the 16 map registers
+SNAP    EQU     0900H           ;free common RAM: 23 x 3 linkage words
 
         EXT     OVLMGR_INIT
         EXT     CUR_WINA_ID
@@ -66,14 +81,21 @@ OLDWP:  WORD    0               ;the monitor's INT2 vector, while ours
 OLDPC:  WORD    0               ;is in place
 HWS:    BSS     32              ;SC99_INT2's workspace
 HST:    WORD    0               ;SC99_INT2's own ST on entry
+SAVEST: WORD    0               ;ST at PORT_INIT (for its interrupt mask)
 
 PORT_INIT:
         CALL    @OVLMGR_INIT
         CLR     @CUR_WINA_ID
         CALL    @STUBINIT
+        STST    R0
+        MOV     R0,@SAVEST
+        LIMI    0               ;no interrupts during the compile
+        LI      R0,SC99_INT2    ;a crash that never reached PORT_DONE
+        C       R0,@INT2PC      ;may have left ours in place: never
+        JEQ     PINIT1          ;save it as "the monitor's"
         MOV     @INT2WP,@OLDWP
         MOV     @INT2PC,@OLDPC
-        LI      R0,HWS
+PINIT1: LI      R0,HWS
         MOV     R0,@INT2WP
         LI      R0,SC99_INT2
         MOV     R0,@INT2PC
@@ -84,13 +106,27 @@ PORT_DONE:
         JEQ     PDONE1
         MOV     R0,@INT2WP
         MOV     @OLDPC,@INT2PC
-PDONE1: RET
+PDONE1: STST    R0              ;the interrupt mask PORT_INIT found,
+        ANDI    R0,0FFF0H       ;the rest of ST as it is now
+        MOV     @SAVEST,R1
+        ANDI    R1,000FH
+        SOC     R1,R0
+        LST     R0
+        RET
 
 ;-------------------------------------------------------------------
 ; SC99_INT2 - entered by the level-2 context switch: R13-R15 = WP, PC
 ; and ST of the fault.
 ;-------------------------------------------------------------------
 SC99_INT2:
+        LI      R0,00DAH        ;R13-R15 of INT 1-7 and XOP 0-15: every
+        LI      R1,SNAP         ;16 bytes from INTWP1+26 to XOPWP15+26
+HSNAP:  MOV     *R0+,*R1+
+        MOV     *R0+,*R1+
+        MOV     *R0+,*R1+
+        AI      R0,10
+        CI      R0,0240H
+        JL      HSNAP
         STST    R0
         MOV     R0,@HST
         MESG    @T_HDR
@@ -110,13 +146,7 @@ SC99_INT2:
 
         MESG    @T_STK          ;24 words from the faulting SP
         MOV     @20(R13),R1
-        LI      R2,8
-        BL      @HWORDS
-        MESG    @T_IND
-        LI      R2,8
-        BL      @HWORDS
-        MESG    @T_IND
-        LI      R2,8
+        LI      R2,24
         BL      @HWORDS
 
         MESG    @T_MAP          ;the real map registers
@@ -162,15 +192,8 @@ HOVS1:
         ; block sums of segments 8-B with the fault's map, PSEL on
         PSEL_EN
         LI      R1,08000H
-HSUM0:  MESG    @T_SUM          ;new line: "S" + segment digit
-        MOV     R1,R3
-        SRL     R3,12
-        AI      R3,'0'          ;8-B -> '8','9','A','B'
-        CI      R3,'9'
-        JLE     HSUM1
-        AI      R3,7
-HSUM1:  SWPB    R3
-        WRITE   R3
+HSUM0:  MESG    @T_SUM          ;new line: "S" + segment address
+        WHEX    R1
         BL      @HSPACE
         LI      R0,16           ;16 blocks of 256 bytes
 HSUM2:  CLR     R3
@@ -185,12 +208,29 @@ HSUM3:  A       *R1+,R3
         CI      R1,0C000H
         JNE     HSUM0
         PSEL_DIS
+
+        MESG    @T_INT          ;linkage words at the fault
+        LI      R1,SNAP
+        LI      R5,7
+        BL      @HTRIPS
+        MESG    @T_XOP
+        LI      R5,8
+        BL      @HTRIPS
+        MESG    @T_XOP2
+        LI      R5,8
+        BL      @HTRIPS
         MESG    @T_NL
 
-        ; hand over to the monitor's handler with the fault context
+        ; hand over to the monitor's handler with the fault context,
+        ; giving it its vector back first.  No saved vector (a crash
+        ; left ours in place): re-enter the monitor as it does itself.
         ; (R0 cannot index: @n(R0) is absolute on the TMS9900)
         MOV     @OLDWP,R2
-        MOV     @OLDPC,R1
+        JNE     HCHAIN
+        BLWP    @0F004H
+HCHAIN: MOV     @OLDPC,R1
+        MOV     R2,@INT2WP
+        MOV     R1,@INT2PC
         MOV     R13,@26(R2)
         MOV     R14,@28(R2)
         MOV     R15,@30(R2)
@@ -207,6 +247,17 @@ HWD1:   MOV     *R1+,R3
         DEC     R2
         JNE     HWD1
         B       *R0
+
+; print R5 triples from *R1 (R1 advances), "| " after each
+HTRIPS: MOV     R11,R6
+HTRP1:  LI      R2,3
+        BL      @HWORDS
+        LI      R3,7C00H        ;'|'
+        WRITE   R3
+        BL      @HSPACE
+        DEC     R5
+        JNE     HTRP1
+        B       *R6
 
 HSPACE: LI      R3,2000H
         WRITE   R3
@@ -234,10 +285,6 @@ T_STK:  BYTE    0DH,0AH
         TEXT    'STK '
         BYTE    0
         EVEN
-T_IND:  BYTE    0DH,0AH
-        TEXT    '    '
-        BYTE    0
-        EVEN
 T_MAP:  BYTE    0DH,0AH
         TEXT    'MAP '
         BYTE    0
@@ -256,6 +303,18 @@ T_TRC:  BYTE    0DH,0AH
         EVEN
 T_SUM:  BYTE    0DH,0AH
         TEXT    'S'
+        BYTE    0
+        EVEN
+T_INT:  BYTE    0DH,0AH
+        TEXT    'INT1-7 '
+        BYTE    0
+        EVEN
+T_XOP:  BYTE    0DH,0AH
+        TEXT    'XOP0-7 '
+        BYTE    0
+        EVEN
+T_XOP2: BYTE    0DH,0AH
+        TEXT    'XOP8-F '
         BYTE    0
         EVEN
 T_NL:   BYTE    0DH,0AH,0
