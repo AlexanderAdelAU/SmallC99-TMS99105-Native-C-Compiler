@@ -5,7 +5,7 @@
 <text x="340" y="49" text-anchor="middle" font-size="14" font-weight="bold" fill="#444441">Segment 0  &gt;0000–&gt;0FFF</text>
 <text x="340" y="66" text-anchor="middle" font-size="12" fill="#5F5E5A">Common: shell workspace, FCB, BDOS gate, stack</text>
 <rect x="40" y="88" width="600" height="148" rx="12" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
-<text x="340" y="112" text-anchor="middle" font-size="14" font-weight="bold" fill="#085041">Segments 1–7  &gt;1000–&gt;7591  resident, page 0 (26,002 bytes)</text>
+<text x="340" y="112" text-anchor="middle" font-size="14" font-weight="bold" fill="#085041">Segments 1–7  &gt;1000–&gt;756D  resident, page 0 (25,966 bytes)</text>
 <text x="340" y="130" text-anchor="middle" font-size="12" fill="#0F6E56">Always mapped: every overlay can call it directly</text>
 <g font-size="12" text-anchor="middle">
 <rect x="55" y="148" width="108" height="72" rx="6" fill="#FFFFFF" stroke="#B4B2A9" stroke-width="0.5"/>

@@ -107,6 +107,7 @@ extern char symtab[];
 extern char ssname[];
 extern char *cptr;
 extern R_CCOUT();
+extern R_DUMP();
 extern R_SETCODES();
 extern findglb();
 
@@ -180,17 +181,18 @@ int *start;
     snext = 0;
 }
 
+/*
+** Write the staged p-codes.  qdump() in the code-generator overlay
+** runs the peephole optimizer over them first (R_DUMP).
+*/
 dumpstage()
 {
     int *end;
 
     end = snext;
     snext = stage;
-
-    while(snext < end) {
-        R_CCOUT(snext[0], snext[1]);
-        snext = snext + 2;
-    }
+    R_DUMP(end);
+    snext = end;
 }
 
 outline(ptr)
