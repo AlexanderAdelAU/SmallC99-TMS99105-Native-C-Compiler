@@ -18,6 +18,7 @@
 R0      EQU     0
 R1      EQU     1
 R2      EQU     2
+R3      EQU     3
 SP      EQU     10
 
         EXT     OVLMGR
@@ -31,6 +32,10 @@ OVSTACK:
 OVSTKEND:
 OVSP:
         WORD    OVSTACK
+OVTRACE:
+        WORD    0,0,0,0,0,0,0,0  ; ring of callee entries (OVTPOS = next slot)
+OVTPOS:
+        WORD    0
 
 ; Invoked by CC_PORT.A99 after OVLMGR_INIT and CLR CUR_WINA_ID.
 ; Do not write vectors into shell COMMON at >02A2->02B4.
@@ -59,6 +64,11 @@ OVC2:
         MOV     *SP+,*R0+        ; caller return word
         MOV     @CUR_WINA_ID,*R0+ ; previous segment-8 owner
         MOV     R0,@OVSP
+        MOV     @OVTPOS,R3       ; crash trace: the last 8 entries called,
+        MOV     R2,@OVTRACE(R3)  ; printed by the INT2 dump in CC_PORT.
+        INCT    R3               ; R3, not R0: @n(R0) is absolute.  R3 is
+        ANDI    R3,000EH         ; free here - OVLMGR uses it as scratch
+        MOV     R3,@OVTPOS
         DECT    SP
         MOV     R2,*SP           ; preserve callee entry across mapper
         CALL    @OVLMGR
@@ -83,4 +93,8 @@ R_CODEON:
         ENT     OVCALL
         ENT     STUBINIT
         ENT     R_CODEON
+        ENT     OVSP
+        ENT     OVSTACK
+        ENT     OVTRACE
+        ENT     OVTPOS
         END

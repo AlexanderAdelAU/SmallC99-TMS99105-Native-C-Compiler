@@ -7,20 +7,221 @@
 ;
 ;  Compiler source calls PORT_INIT; only this port module knows the
 ;  concrete OVLMGR_INIT / STUBINIT sequence.
+;
+;  PORT_INIT also takes the level-2 interrupt vector (>0008/>000A) for
+;  the run, and PORT_DONE puts the monitor's back.  On an INT2 (illegal
+;  opcode, privilege or arithmetic fault) SC99_INT2 prints what the
+;  monitor's handler cannot see:
+;
+;    SC99 INT2 PC= WP= ST=        the fault context
+;    R0  / R8                     the faulting workspace, R0-R15
+;    STK                          24 words from the faulting SP (R10)
+;    MAP                          all 16 map registers (STCR, SRL 8)
+;    OVL                          OVLMGR's pages for segments 8-B,
+;                                 CUR_WINA_ID, OVSP
+;    OVS                          the OVCALL frames in use
+;                                 (return address, previous owner)
+;    TRC                          the last 8 overlay entries called,
+;                                 then OVTPOS (the next slot)
+;
+;  and then hands the fault to the monitor's own handler, which prints
+;  its usual line and enters the monitor.
 ;*******************************************************************
 
         DXOP    CALL,6
         DXOP    RET,7
+        DXOP    WHEX,10
+        DXOP    WRITE,12
+        DXOP    MESG,14
+
+R0      EQU     0
+R1      EQU     1
+R2      EQU     2
+R3      EQU     3
+R11     EQU     11
+R12     EQU     12
+R13     EQU     13
+R14     EQU     14
+R15     EQU     15
+
+INT2WP  EQU     0008H           ;level-2 vector: workspace
+INT2PC  EQU     000AH           ;level-2 vector: entry
+MAPWIN  EQU     080C0H          ;CRU base of the 16 map registers
 
         EXT     OVLMGR_INIT
         EXT     CUR_WINA_ID
+        EXT     CURRENT_PAGE
         EXT     STUBINIT
+        EXT     OVSP
+        EXT     OVSTACK
+        EXT     OVTRACE
+        EXT     OVTPOS
+
+OLDWP:  WORD    0               ;the monitor's INT2 vector, while ours
+OLDPC:  WORD    0               ;is in place
+HWS:    BSS     32              ;SC99_INT2's workspace
 
 PORT_INIT:
         CALL    @OVLMGR_INIT
         CLR     @CUR_WINA_ID
         CALL    @STUBINIT
+        MOV     @INT2WP,@OLDWP
+        MOV     @INT2PC,@OLDPC
+        LI      R0,HWS
+        MOV     R0,@INT2WP
+        LI      R0,SC99_INT2
+        MOV     R0,@INT2PC
         RET
 
+PORT_DONE:
+        MOV     @OLDWP,R0
+        JEQ     PDONE1
+        MOV     R0,@INT2WP
+        MOV     @OLDPC,@INT2PC
+PDONE1: RET
+
+;-------------------------------------------------------------------
+; SC99_INT2 - entered by the level-2 context switch: R13-R15 = WP, PC
+; and ST of the fault.
+;-------------------------------------------------------------------
+SC99_INT2:
+        MESG    @T_HDR
+        WHEX    R14
+        MESG    @T_WP
+        WHEX    R13
+        MESG    @T_ST
+        WHEX    R15
+
+        MESG    @T_R0           ;R0-R7
+        MOV     R13,R1
+        LI      R2,8
+        BL      @HWORDS
+        MESG    @T_R8           ;R8-R15
+        LI      R2,8
+        BL      @HWORDS
+
+        MESG    @T_STK          ;24 words from the faulting SP
+        MOV     @20(R13),R1
+        LI      R2,8
+        BL      @HWORDS
+        MESG    @T_IND
+        LI      R2,8
+        BL      @HWORDS
+        MESG    @T_IND
+        LI      R2,8
+        BL      @HWORDS
+
+        MESG    @T_MAP          ;the real map registers
+        LI      R12,MAPWIN
+        LI      R2,16
+HMAP:   CLR     R3
+        STCR    R3,2
+        SRL     R3,8
+        WHEX    R3
+        BL      @HSPACE
+        INCT    R12
+        DEC     R2
+        JNE     HMAP
+
+        MESG    @T_OVL          ;what OVLMGR believes
+        LI      R1,CURRENT_PAGE+16
+        LI      R2,4
+        BL      @HWORDS
+        MOV     @CUR_WINA_ID,R3
+        WHEX    R3
+        BL      @HSPACE
+        MOV     @OVSP,R3
+        WHEX    R3
+
+        MESG    @T_OVS          ;OVCALL frames in use
+        LI      R1,OVSTACK
+        MOV     @OVSP,R2
+        S       R1,R2
+        SRL     R2,1
+        JEQ     HOVS1
+        CI      R2,16
+        JLE     HOVS0
+        LI      R2,16
+HOVS0:  BL      @HWORDS
+HOVS1:
+        MESG    @T_TRC          ;last 8 overlay entries
+        LI      R1,OVTRACE
+        LI      R2,8
+        BL      @HWORDS
+        MOV     @OVTPOS,R3
+        WHEX    R3
+        MESG    @T_NL
+
+        ; hand over to the monitor's handler with the fault context
+        ; (R0 cannot index: @n(R0) is absolute on the TMS9900)
+        MOV     @OLDWP,R2
+        MOV     @OLDPC,R1
+        MOV     R13,@26(R2)
+        MOV     R14,@28(R2)
+        MOV     R15,@30(R2)
+        MOV     R2,R13
+        MOV     R1,R14
+        STST    R15
+        RTWP
+
+; print R2 words from *R1 (R1 advances), each followed by a space
+HWORDS: MOV     R11,R0
+HWD1:   MOV     *R1+,R3
+        WHEX    R3
+        BL      @HSPACE
+        DEC     R2
+        JNE     HWD1
+        B       *R0
+
+HSPACE: LI      R3,2000H
+        WRITE   R3
+        RT
+
+T_HDR:  BYTE    0DH,0AH
+        TEXT    'SC99 INT2 PC='
+        BYTE    0
+        EVEN
+T_WP:   TEXT    ' WP='
+        BYTE    0
+        EVEN
+T_ST:   TEXT    ' ST='
+        BYTE    0
+        EVEN
+T_R0:   BYTE    0DH,0AH
+        TEXT    'R0  '
+        BYTE    0
+        EVEN
+T_R8:   BYTE    0DH,0AH
+        TEXT    'R8  '
+        BYTE    0
+        EVEN
+T_STK:  BYTE    0DH,0AH
+        TEXT    'STK '
+        BYTE    0
+        EVEN
+T_IND:  BYTE    0DH,0AH
+        TEXT    '    '
+        BYTE    0
+        EVEN
+T_MAP:  BYTE    0DH,0AH
+        TEXT    'MAP '
+        BYTE    0
+        EVEN
+T_OVL:  BYTE    0DH,0AH
+        TEXT    'OVL '
+        BYTE    0
+        EVEN
+T_OVS:  BYTE    0DH,0AH
+        TEXT    'OVS '
+        BYTE    0
+        EVEN
+T_TRC:  BYTE    0DH,0AH
+        TEXT    'TRC '
+        BYTE    0
+        EVEN
+T_NL:   BYTE    0DH,0AH,0
+        EVEN
+
         ENT     PORT_INIT
+        ENT     PORT_DONE
         END

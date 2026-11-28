@@ -12,6 +12,7 @@
 #define NAMEMAX 14
 
 extern PORT_INIT();
+extern PORT_DONE();
 extern int errcnt;          /* error count (CC_DATA); error() in CC_SCAN_SYM */
 extern R_GETOPTS();
 extern R_PREP();
@@ -40,11 +41,19 @@ main(argc, argv)
 int argc;
 char **argv;
 {
+    PORT_INIT();                 /* mapper, overlay stubs, INT2 dump    */
+    cmain(argc, argv);
+    PORT_DONE();                 /* give the monitor its INT2 back      */
+}
+
+cmain(argc, argv)
+int argc;
+char **argv;
+{
     srcunit = 0;
     outunit = 0;
     verbose = NO;
 
-    PORT_INIT();                 /* initialise target environment */
     if(ask(argc, argv) == NO)   /* get user options */
         return;
     compinit();                 /* initialise compiler and TMS backend */
