@@ -132,97 +132,6 @@ extern pdec();
 extern pnl();
 extern error();
 
-char *code[PCODEMAX];
-
-#define BLPFX  "\tBL @_cc"		/*  shared helper-call prefix   */
-
-badcode(pcode)
-int pcode;
-{
-    if(tmsfail == 0)
-        tmsbad = pcode;
-    tmsfail = 1;
-    errflag = 1;
-}
-
-ccout(pcode, value)
-int pcode;
-int value;
-{
-    int part;
-    int skip;
-    int count;
-    char *cp;
-    char *back;
-    char *tp;
-
-    if(pcode < 1 || pcode >= PCODEMAX) {
-        badcode(pcode);
-        return;
-    }
-
-    tp = code[pcode];
-    if(tp == 0) {
-        badcode(pcode);
-        return;
-    }
-
-    part = 0;
-    back = 0;
-    skip = NO;
-    cp = tp + 1;
-
-    while(*cp) {
-        if(*cp == '<') {
-            ++cp;
-            if(skip == NO) {
-                if(*cp == 'm') {
-                    pstr(value + NAME);
-                }
-                else if(*cp == 'n') pdec(value);
-                else if(*cp == 'l') pdec(litlab);
-                /*  <e> emits R99's external marker.  It cannot be
-                    written literally: '#' opens the repeat construct
-                    below, so a bare ## in a template is swallowed and
-                    the reference assembles as undefined.  */
-                else if(*cp == 'e') { pchar('#'); pchar('#'); }
-                /*  <b> is the shared call.A99 helper prefix.  Helpers
-                    return directly in primary R4; no reload suffix exists.  */
-                else if(*cp == 'b') pstr(BLPFX);
-            }
-            cp += 2;
-        }
-        else if(*cp == '?') {
-            ++part;
-            if(part == 1) {
-                if(value == 0) skip = YES;
-            }
-            else if(part == 2) skip = !skip;
-            else if(part == 3) {
-                part = 0;
-                skip = NO;
-            }
-            ++cp;
-        }
-        else if(*cp == '#') {
-            ++cp;
-            if(back == 0) {
-                count = value;
-                if(count < 1) {
-                    while(*cp && *cp++ != '#') ;
-                }
-                else back = cp;
-            }
-            else {
-                --count;
-                if(count > 0) cp = back;
-                else back = 0;
-            }
-        }
-        else if(skip == NO) pchar(*cp++);
-        else ++cp;
-    }
-}
 
 /*
 ** ==== Peephole optimizer: J. E. Hendrix's Small-C 2.x CCC4 peep() ====
@@ -284,15 +193,6 @@ int *rule[NRULES];
 
 extern setrules();
 
-/* the register-effect bits of a p-code's template; unknown = uses both */
-regs(pc) int pc;
-{
-    char *cp;
-    if(pc < 1 || pc >= PCODEMAX) return USES;
-    cp = code[pc];
-    if(cp == 0) return USES;
-    return *cp - '@';
-}
 
 ispush(pc) int pc;
 {
@@ -443,4 +343,116 @@ qdump(end) int *end;
         if(qnext < qtail) ccout(qnext[0], qnext[1]);
         qnext = qnext + 2;
     }
+}
+
+/*
+** code[] must stay clear of >80C0->80DF.  The mapper also decodes a
+** MEMORY write there (A11-A14 pick the segment), so a store into that
+** window reprograms a map register.  As the first global, code[] sat
+** at >8000-80C7 once it grew to 100 entries, and setcodes() writing
+** code[96..99] remapped segments 0-3 - the resident compiler - so every
+** compile died at once.  It therefore follows the optimiser code below
+** rather than heading the module.  Keep writable data out of the window.
+*/
+
+char *code[PCODEMAX];
+
+#define BLPFX  "\tBL @_cc"		/*  shared helper-call prefix   */
+
+badcode(pcode)
+int pcode;
+{
+    if(tmsfail == 0)
+        tmsbad = pcode;
+    tmsfail = 1;
+    errflag = 1;
+}
+
+ccout(pcode, value)
+int pcode;
+int value;
+{
+    int part;
+    int skip;
+    int count;
+    char *cp;
+    char *back;
+    char *tp;
+
+    if(pcode < 1 || pcode >= PCODEMAX) {
+        badcode(pcode);
+        return;
+    }
+
+    tp = code[pcode];
+    if(tp == 0) {
+        badcode(pcode);
+        return;
+    }
+
+    part = 0;
+    back = 0;
+    skip = NO;
+    cp = tp + 1;
+
+    while(*cp) {
+        if(*cp == '<') {
+            ++cp;
+            if(skip == NO) {
+                if(*cp == 'm') {
+                    pstr(value + NAME);
+                }
+                else if(*cp == 'n') pdec(value);
+                else if(*cp == 'l') pdec(litlab);
+                /*  <e> emits R99's external marker.  It cannot be
+                    written literally: '#' opens the repeat construct
+                    below, so a bare ## in a template is swallowed and
+                    the reference assembles as undefined.  */
+                else if(*cp == 'e') { pchar('#'); pchar('#'); }
+                /*  <b> is the shared call.A99 helper prefix.  Helpers
+                    return directly in primary R4; no reload suffix exists.  */
+                else if(*cp == 'b') pstr(BLPFX);
+            }
+            cp += 2;
+        }
+        else if(*cp == '?') {
+            ++part;
+            if(part == 1) {
+                if(value == 0) skip = YES;
+            }
+            else if(part == 2) skip = !skip;
+            else if(part == 3) {
+                part = 0;
+                skip = NO;
+            }
+            ++cp;
+        }
+        else if(*cp == '#') {
+            ++cp;
+            if(back == 0) {
+                count = value;
+                if(count < 1) {
+                    while(*cp && *cp++ != '#') ;
+                }
+                else back = cp;
+            }
+            else {
+                --count;
+                if(count > 0) cp = back;
+                else back = 0;
+            }
+        }
+        else if(skip == NO) pchar(*cp++);
+        else ++cp;
+    }
+}
+
+/* the register-effect bits of a p-code's template; unknown = uses both */
+regs(pc) int pc;
+{
+    char *cp;
+    if(pc < 1 || pc >= PCODEMAX) return USES;
+    cp = code[pc];
+    if(cp == 0) return USES;
+    return *cp - '@';
 }

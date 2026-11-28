@@ -554,6 +554,19 @@ foreach ($overlay in $OVERLAYS) {
     }
 }
 
+# The mapper also decodes a MEMORY write to >80C0->80DF (A11-A14 pick the
+# segment), so a store there reprograms a map register.  code[] is the
+# writable table setcodes() fills; when it headed CC_CG99 at >8000-80C7,
+# code[96..99] landed in the window and remapped the resident compiler.
+$codeRef = [regex]::Match($linkOutput, '(?im)^\s*xref code @\s*[0-9A-F]+ = ([0-9A-F]+)\s*$')
+if (-not $codeRef.Success) { throw "*** BUILD FAILED: LINK99 listed no address for code[]" }
+$codeAt = [Convert]::ToInt32($codeRef.Groups[1].Value,16)
+$codeEnd = $codeAt + 200
+Write-Output ("  code[]     >{0:X4}->{1:X4}" -f $codeAt,($codeEnd - 1))
+if ($codeAt -le 0x80DF -and $codeEnd -gt 0x80C0) {
+    throw "*** BUILD FAILED: code[] overlaps the map window >80C0->80DF"
+}
+
 # The table LINK99 built.  These are the layouts the compiler depends
 # on, checked against what was actually linked rather than against an
 # include file:
