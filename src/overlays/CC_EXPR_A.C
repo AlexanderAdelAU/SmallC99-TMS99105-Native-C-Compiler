@@ -362,4 +362,21 @@ level13(is)  int is[];  {
     }
   }
 
-
+/*
+** Is name one of the six functions that read their argument count?
+** CLIB99 is built by smallcp, which stores the count for exactly these
+** (LI R1,n / BL @_setargc) before the call, and printf and the others
+** read it back with _argcnt().  ARGCNTn emits the same two lines.
+*/
+isvarg(name) char *name; {
+  char *p;
+  int k;
+  p = "printf fprintf sprintf scanf fscanf sscanf ";
+  while(*p) {
+    k = 0;
+    while(p[k] != ' ' && name[k] == p[k]) ++k;
+    if(p[k] == ' ' && name[k] == 0) return 1;
+    while(*p++ != ' ') ;
+  }
+  return 0;
+}
